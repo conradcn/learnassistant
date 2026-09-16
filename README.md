@@ -1,12 +1,63 @@
 # learn-assistant
 
-A self-hosted learning tracker. You give it a subject and your current level; it researches a
-curriculum, authors the lessons with the AI of your choosing (one sandboxed session per module), and
-then runs you through them — Socratic evaluation chats instead of quizzes, spaced review, interleaved
-practice, and a capstone. For the flat facts that simply have to be known by heart, there is a flash
-card library alongside it, spaced on the same schedule.
+A self-directed progressive education tool. I designed this to help me get from "rusty college math" to "understanding frontier AI papers." It succeeded in that, so I figured someone else might be able to use it too.
 
-It runs entirely on your machine. There is no hosted service, no account, and no telemetry.
+## How it works
+
+You start by giving the tool an idea of what you already know, and what you want to know. It then generates a curriculum with digestably-short lessons, and a network of prerequisites. At any given time before you reach the final project, there will probably be multiple open lessons to choose from.
+
+The lessons themselves are mixes of text, diagrams, and interactive elements to help you learn the topic.
+
+At the end of each lesson, there is a socratic evaluation step. Unlike a quiz, the AI asks you questions about the material, and collaboratively helps to sharpen your understanding until you can answer them correctly. If you're really struggling with a concept, it will create a new lesson covering just that subtopic, under the understanding that its first pass may have been too broad to cover it in enough detail. This ensures that if you, like me, have a tendency to overestimate your comprehension of something after you've read it once, any misunderstandings will be corrected before they confuse you later on.
+
+At the end, there is a self-directed final project, which it evaluates and ensures encapsulates the information you've learned.
+
+It runs entirely on your machine except for the LLM (unless you have the compute to run sufficient models in Ollama, in which case it can be completely local). I desigend this to use my Claude subscription with the CLI, but it should work fine with any other system that has an API (like OpenRouter, OpenAI, etc).
+
+## Why this exists
+
+I was always intsnsely frustrated with how math is taught. In my opinion, hand-computation past everyday price math is a complete waste of time, but it dominates curricula in high-school and college because it is easily measurable. What matters is the why. Knowing how to compute the eigenvalue of a 3x3 matrix by hand is utterly useless in practice. Computers are benchmarked on how many trillions of times they can do that per second. The connection with principal component analysis, which is both useful and everywhere, is skipped entirely in favor of being able to replicate numpy.linalg.eig with pencil and paper. The same goes for derivatives and gradient descent, or integrals and ranges in probability distributions. Unlike computation, deep conceptual understanding will actually help you build stuff (and has for me already on unexpectedly many occasions).
+
+I made this tool to address that. After a month or so using it (extremely part time between work, family, and other hobbies), I have a much better working knowledge of math (specifically vector calculus, linear algebra, and statistics) than I had from my computer science education, in which I passed dedicated classes in each of those. I acknoweldge that it's difficult to separate the fonudations from the new knowledge, but I now understand the how to use the Jacobian (which was not covered in my college courses) better than I previously understood how to use the Eigenvalue (which was).
+
+## Limitations
+
+I have only tested this tool on STEM topics (specifically math and organic chemistry). I suspect that it is more likely to hallucinate on topics that involve more disparate information and fuzziness rather than depth of understanding of something with a complex but concrete right and wrong. In STEM, I cross-check with Wikipedia regularly (good practice when dealing with LLM's, though I've never seen it provide an incorrect fact). Even if it doesn't teach anything overtly incorrect, learning "history according to the narratives most represented in the Pile" will probably introduce major and hard-to-trace distortions, and I wouldn't recommend it. For that, books are still going to be your best source, because they come with authors with identifiable worldviews that can be understood and accounted for.
+
+I use Opus for everything here. It's not enough tokens that it's worth risking quality for cost (at least for me).
+
+## Setup and run
+
+### Easiest: Download and run with the start script
+
+Download this repository as a zip, extract it, and then run start.bat.
+
+### Second easiest: Clone and run
+
+```
+git clone <this repo>
+cd LearnAssistant
+./start.sh          # Linux / macOS / Git Bash
+start.bat           # Windows (double-clicking it works too)
+```
+
+The start script installs dependencies if `node_modules/` is missing, produces a production build if
+`.next/BUILD_ID` is missing, and then serves the app. It prints the URL to open:
+
+```
+[learn-assistant] Open http://localhost:31544
+```
+
+### With Docker
+
+```
+git clone <this repo>
+cd LearnAssistant
+cp .env.example .env      # optional — every value in it is already the default
+docker compose up
+```
+
+Below this line is technical information written by Claude. It's probably correct, but also mostly useful to contributors and their agents.
 
 ## Requirements
 
@@ -44,35 +95,9 @@ It runs entirely on your machine. There is no hosted service, no account, and no
   brings up the same app on the same port. The one thing a container changes is which
   providers it can reach; "With Docker" below says exactly what, and what to set.
 
-## Setup and run
 
-Two ways in. They produce the same app on the same port with the same `./data`; pick whichever you
-would rather maintain.
+### Notes on start methods
 
-### With the start script
-
-```
-git clone <this repo>
-cd LearnAssistant
-./start.sh          # Linux / macOS / Git Bash
-start.bat           # Windows (double-clicking it works too)
-```
-
-The start script installs dependencies if `node_modules/` is missing, produces a production build if
-`.next/BUILD_ID` is missing, and then serves the app. It prints the URL to open:
-
-```
-[learn-assistant] Open http://localhost:31544
-```
-
-### With Docker
-
-```
-git clone <this repo>
-cd LearnAssistant
-cp .env.example .env      # optional — every value in it is already the default
-docker compose up
-```
 
 Same URL, same port, and `./data` on your disk rather than inside the container, so a
 `docker compose build` costs you nothing you have written or read. The image is a three-stage build
