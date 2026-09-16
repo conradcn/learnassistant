@@ -1,0 +1,51 @@
+{
+  "name": "learn-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted learning tracker that researches a curriculum and authors Socratic lessons with the Claude CLI.",
+  "engines": {
+    "node": "^20.19.0 || ^22.12.0 || ^24.0.0"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "next build",
+    "start": "node scripts/start.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run",
+    "test:unit": "vitest run --dir tests",
+    "test:coverage": "vitest run --project unit --coverage",
+    "e2e": "playwright test --project=functional",
+    "e2e:perf": "playwright test --project=perf",
+    "e2e:real": "playwright test --project=real"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.122.0",
+    "@types/katex": "0.16.7",
+    "better-sqlite3": "12.4.1",
+    "katex": "0.16.22",
+    "next": "15.5.23",
+    "pdfjs-dist": "5.4.149",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "ts-fsrs": "^5.4.1",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@playwright/test": "1.56.0",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/react": "16.3.0",
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "22.18.0",
+    "@types/react": "19.1.9",
+    "@types/react-dom": "19.1.7",
+    "@vitejs/plugin-react": "5.0.4",
+    "@vitest/coverage-v8": "3.2.7",
+    "eslint": "9.37.0",
+    "eslint-config-next": "15.5.23",
+    "jsdom": "27.0.0",
+    "typescript": "5.9.2",
+    "vitest": "3.2.7"
+  }
+}

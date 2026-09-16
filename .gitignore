@@ -1,0 +1,55 @@
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# runtime data & logs (learner PII lives here)
+data/
+.e2e-data/
+.e2e-real-data/
+.e2e-real/
+.smoke-data/
+.docker-smoke-data/
+logs/
+*.ndjson
+*.db
+*.db-wal
+*.db-shm
+*.db.prev
+.scrub-salt
+.session-token
+
+# secrets / local env
+.env
+.env.*
+!.env.example
+
+# fractal workspace outputs
+.fractal/history/
+.fractal/ui-history/
+.fractal/delivery/
+e2e/perf/timeseries/
+e2e/reachability/
+e2e/.report/
+e2e/.seed.json
+test-results/
+playwright-report/
+.buildassistant/
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.claude/settings.local.json
+
+# detached server launch logs
+server.log
+server.err.log
+.tmp-refactor/
+
+# release artifacts produced by scripts/package-release.mjs
+/release/

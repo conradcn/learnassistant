@@ -1,0 +1,78 @@
+name: CI
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  verify:
+    strategy:
+      fail-fast: false
+      # `node` is spelled out rather than read from .nvmrc because a matrix is expanded
+      # before the checkout that would make .nvmrc readable. tests/claims/engines.test.ts
+      # asserts this list against .nvmrc and package.json's `engines`, so it cannot drift.
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        node: ['24']
+        # The floor of the supported range, on one OS. Node 24 is what .nvmrc pins and what
+        # everyone develops on; this entry is what keeps the floor an honest claim rather
+        # than an untested one. Linux only — the point is the runtime, not the platform.
+        include:
+          - os: ubuntu-latest
+            node: '20.19'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      # tests/** — unit, integration, path, shape, egress, claims, hardening, smoke
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      # e2e/** — functional specs, then perf specs (both via start.bat / start.sh)
+      - run: npx playwright test --project=functional
+      # WHY here and not in the `npm test` above: UI reachability is graded from the
+      # navigation log a Playwright run writes, so it skips itself when run before one.
+      # WHY between the two projects: each `npx playwright test` invocation runs its own
+      # global setup, which clears e2e/reachability — grading after the perf project would
+      # grade the perf specs' handful of routes and call every other feature unreached.
+      - name: UI reachability
+        run: npm test -- tests/reachability
+      - run: npx playwright test --project=perf
+      # WHY: `npm run dev` is the documented edit-reload loop and the one entry point no
+      # other step exercises. It was broken on Windows and CI could not see it. This starts
+      # it for real, on its own port, and checks it binds.
+      - name: Dev server starts
+        run: node scripts/dev-smoke.mjs
+      - name: Fresh-clone startup smoke
+        run: npm test -- tests/smoke/start.test.ts
+        env:
+          FRACTAL_SMOKE_FRESH: '1'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: perf-timeseries-${{ matrix.os }}-node${{ matrix.node }}
+          path: e2e/perf/timeseries/
+          if-no-files-found: ignore
+
+  # The container's half of the fresh-start smoke: build the image, come up on an empty
+  # data directory, create a topic, restart, check it survived. Its own job so it runs
+  # beside `verify` rather than after it — the image build is the whole cost, about five
+  # minutes on a hosted runner, and it needs no npm install of its own.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Fresh-start smoke in a container
+        run: node scripts/docker-smoke.mjs
+      - name: Container logs
+        if: failure()
+        run: docker compose -p learn-assistant-smoke logs --no-color || true

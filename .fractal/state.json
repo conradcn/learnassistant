@@ -1,0 +1,5021 @@
+{
+  "version": 1,
+  "createdAt": "2026-08-22T00:00:00Z",
+  "lastRecompile": null,
+  "lastArchitect": "2026-08-22T00:00:00Z",
+  "request": "A tool that takes a subject and level, researches to find a sufficient curriculum, and uses recursive subagents to develop lessons with learning goals and, where applicable, visualizations. Lessons should be structured in 20 minute chunks when possible, but flexibility is fine when merited. If there is a well regarded explanation on a topic on a video hosting site that would be comprehensible, link to it. Otherwise, generate an explanation that is appropriate for the user's current level of understanding. These should be as terse as possible while still remaining usable. At the end of each section is an evaluation structured as a chat. Evaluations should be narrative and Socratic where applicable. Exercises should require the user to fully specify a solution to a problem. The goal is to know the material well enough to thoroughly understand wikis and papers, sharpen one's understanding of the world, and use it to build in collaboration with AI agents. There's no need to memorize exact formulas or computation that would be abstracted out in practice. Once the evaluator agent is satisfied that the user understands the material, the section is marked as completed. An evaluation failure should begin a discussion explaining the misunderstanding and re-evaluation until passing. Reevaluation should ask the question from a different angle if possible to avoid simple memorization. Mechanically, this is a self-hosted website to track learning. When the user adds a new topic, it runs a dedicated Claude code skill to generate the lesson plan using sub agents to research and compose each module. When completed, a final check reviews for discontinuity. Runtime AI work should use the Claude CLI, with one session per module. The sessions should be scoped such that they can only read and modify the module files, but don't get bogged down with excessive tools or the full codebase. Follow progressive education principles when possible. Deviate only when they would violate the spirit of the exercise.",
+  "stack": {
+    "language": "typescript",
+    "framework": "next@15 (App Router)",
+    "runtime": "node>=20",
+    "store": "sqlite (better-sqlite3)",
+    "testFramework": "vitest",
+    "e2e": "playwright",
+    "startCommand": "npm run start",
+    "startPort": 31544,
+    "ports": {
+      "web": 31544
+    },
+    "portRange": [
+      20000,
+      32767
+    ],
+    "externalTools": [
+      "claude CLI"
+    ],
+    "ui": "web",
+    "platforms": [
+      "win32",
+      "linux"
+    ],
+    "startMarker": "[learn-assistant] Open http://localhost:",
+    "notFoundRoute": "/_not-found",
+    "uiViewports": {
+      "mobile": 375,
+      "tablet": 768,
+      "desktop": 1280
+    },
+    "packageManager": "npm",
+    "installCommand": "npm ci",
+    "buildCommand": "npm run build",
+    "testCommand": "npm test"
+  },
+  "features": {
+    "F1": {
+      "title": "Topic intake",
+      "hash": "abe0770aa44165bc",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (valid subject+level+purpose)",
+        "empty subject rejected",
+        "resubmission of a topic already `ready`",
+        "diagnostic skipped",
+        "diagnostic reveals substantial prior knowledge (affected modules flagged `test-out-eligible`)",
+        "material uploaded or pasted (subject pre-filled from it, units listed back, F2 given it as evidence)",
+        "unparseable file — damaged, password-protected, or not the format its name claims (refused by name, the paste path offered, and everything else typed into the form kept)",
+        "scanned PDF with no text layer (refused *as a scan* specifically — we do not OCR and say so — with the paste path offered)",
+        "material far larger than one course (kept to the cap, the learner is told what was left out rather than it being trimmed in silence, and lessons are written from the sections that match them)",
+        "material that contradicts the stated level (both kept: lessons stay at the level the learner chose and the disagreement is said once, not enforced)"
+      ],
+      "acceptanceCriteria": [
+        "submit creates a topic record in `queued` state",
+        "duplicate subject+level warns before resubmitting",
+        "form disabled fields re-enable instantly on submit (optimistic), job status polled/streamed separately",
+        "purpose and diagnostic transcript (if any) are stored on the topic record and readable by F2",
+        "skipping the diagnostic proceeds straight to generation with no penalty or nag",
+        "submitting with no material creates the topic on the existing path — no source directory, no source rows, no change to what F2 does",
+        "a topic created with material stores the extracted text and the original upload under that topic's `source/` directory and one `SourceDocument` row per piece of material, and both are removed when the topic is deleted",
+        "material whose title names a subject pre-fills the subject field, and text the learner typed into that field survives any later upload",
+        "extraction never opens a network connection and never invokes a provider",
+        "a PDF with no extractable text is refused with a message that says it is a scan and names the paste box, and no topic is created from it",
+        "a path that would resolve outside `<dataRoot>/topics/` is refused before any byte is written"
+      ],
+      "perfBudgets": [
+        {
+          "op": "submit",
+          "budgetMs": 100,
+          "percentile": 95
+        }
+      ],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "topics=50, modules per topic=12, diagnostic exchanges=5, source documents per topic=10, upload=25 MB per file, extracted text kept=2,000,000 characters per document",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/topics/new"
+      ]
+    },
+    "F2": {
+      "title": "Curriculum research & generation",
+      "hash": "518c309dd1a72fb2",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (curriculum generates end-to-end as a branching graph)",
+        "subject decomposes strictly linearly (chain produced, no artificial branches)",
+        "research finds no suitable outline (falls back to generic decomposition by subtopic)",
+        "a module session fails or times out (topic marked `needs-attention`, partial modules kept, retry offered)",
+        "discontinuity review finds a gap (the lessons it names are rewritten and the check re-run; topic flips to `ready` when the loop converges, and the residue is logged when it does not)",
+        "a finding names no lesson this topic has (nothing to rewrite, so no further check is paid for)",
+        "graph defect (the edge is dropped or the island opened, and the correction is logged rather than noted)",
+        "a course longer than one prep window (the whole plan is stored, the first window is written, and the rest waits for the next authorised pass)",
+        "the outline comes back missing a unit the material names (the unit is inserted into the plan in the material's own order, displacing filler rather than being dropped)",
+        "research finds no outline at all but material exists (the material's own units and order become the plan, rather than the generic subtopic fallback)",
+        "material longer than a session's context (chunked and viewed, never truncated in silence; the omission is stated in the prompt)",
+        "the index says a document exists and the disk does not (the course runs on the documents that are readable, and the missing one is logged)"
+      ],
+      "acceptanceCriteria": [
+        "every module has learning goals, a warm-up problem, an explanation (link xor generated text), and an evaluation before topic flips to `ready`",
+        "the module graph is acyclic with ≥1 entry module, and stores explicit prerequisite edges (not an implied linear order)",
+        "a capstone spec referencing the driving question exists before topic flips to `ready`",
+        "discontinuity review runs exactly once per set of lessons, on the pass that finishes the course, and its findings are resolved by rewriting the lessons they name rather than shown to the learner",
+        "a module session cannot read/write files outside its own module directory",
+        "when the learner brought material, every unit it names is covered by at least one module in the generated graph, and the modules the material does not name are still added where the subject requires them",
+        "no session is handed more of the material than its budget allows, and any session reading an extract is told so in its own prompt"
+      ],
+      "perfBudgets": [
+        {
+          "op": "full topic generation",
+          "budgetMs": 1200000,
+          "percentile": 95
+        }
+      ],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "modules per topic=unbounded (floor 6, or the number of units the material names up to 60, typically 10-30), material read per research session=12,000 characters (scope digest), per authoring session=6,000 characters (excerpts), chunk=4,000 characters, lessons prepared per pass=10, subagent sessions per topic=modules + 1 research + 1 capstone spec + 1 discontinuity review + a ceiling of 2 repair rounds of 3 lesson rewrites and 1 re-check",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/topics/[id]"
+      ]
+    },
+    "F3": {
+      "title": "Lesson viewer",
+      "hash": "dcd346e8d4f168e1",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (choose among ≥2 available modules)",
+        "enter a module past the unmet-prereq advisory",
+        "test out of a module directly into its evaluation",
+        "warm-up skipped",
+        "module has no visualization (section omitted, not a blank placeholder)",
+        "a lesson authored before the body existed (explanation only, body section absent)",
+        "a non-mathematical lesson mentioning a price keeps its dollar sign as text"
+      ],
+      "acceptanceCriteria": [
+        "a lesson body renders its blocks in authored order, and its checks/reveals/steppers withhold their answer until the learner acts (no feedback before a pick, no answer before a reveal, one step at a time)",
+        "a lesson written without a body renders exactly as before, with no empty section and no checksum failure",
+        "learning goals visible before explanation",
+        "warm-up (unless skipped) is presented before the explanation renders, and the explanation is not shown until the learner attempts or skips it",
+        "video link opens in new tab / embed, generated text renders as formatted content, and LaTeX renders as typeset math rather than literal backslashes",
+        "whenever the graph allows ≥2 concurrently available modules, the viewer presents them as an open choice (no implicit \"next\" that hides alternatives)",
+        "entering a module with unmet prereqs requires exactly one acknowledgment click, never a hard block"
+      ],
+      "perfBudgets": [
+        {
+          "op": "module render",
+          "budgetMs": 200,
+          "percentile": 95
+        },
+        {
+          "op": "first-paint",
+          "budgetMs": 1500,
+          "percentile": 95
+        }
+      ],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "modules per topic=12, topics=50",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/modules/[id]"
+      ]
+    },
+    "F4": {
+      "title": "Socratic evaluation chat",
+      "hash": "63383c53a3573aa7",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (pass on first attempt, unassisted)",
+        "pass with heavy hints (marked `assisted-pass`)",
+        "fail then pass on re-ask",
+        "re-ask served as teach-back, learner corrects the misconception",
+        "repeated failures trigger remedial mini-module, then re-ask",
+        "test-out entry passes cold",
+        "test-out entry fails (routed into the normal lesson, not the remedial loop)",
+        "user abandons mid-chat and resumes later"
+      ],
+      "acceptanceCriteria": [
+        "every exchange is persisted (resumable across sessions)",
+        "a failed attempt always includes an explanation before the next question",
+        "re-asked question after failure is not a verbatim repeat",
+        "assist level is persisted per exchange and readable by F7's scheduler",
+        "a teach-back exchange passes only if the learner identifies and corrects the planted misconception",
+        "the self-assessment prompt never blocks the evaluator (skipping it changes nothing but the F10 comparison)",
+        "completion updates progress and dependent-module availability in the same action (optimistic in UI, reconciled on evaluator response)"
+      ],
+      "perfBudgets": [
+        {
+          "op": "chat message round-trip UI feedback",
+          "budgetMs": 100,
+          "percentile": 95
+        }
+      ],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "exchanges per evaluation=20",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/modules/[id]/eval"
+      ]
+    },
+    "F5": {
+      "title": "Progress tracking",
+      "hash": "11e330b7c3920df0",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (topic with mixed complete/available/remaining modules)",
+        "topic with zero progress",
+        "all modules complete, capstone open (`modules-complete`)",
+        "capstone passed (topic `done`)"
+      ],
+      "acceptanceCriteria": [
+        "dashboard reflects latest completion within one reload",
+        "progress persists across restarts (durable store, not in-memory only)",
+        "no numeric or letter grade appears anywhere on the dashboard",
+        "a topic with all modules passed but capstone open shows `modules-complete`, not `done`"
+      ],
+      "perfBudgets": [
+        {
+          "op": "dashboard load",
+          "budgetMs": 300,
+          "percentile": 95
+        }
+      ],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "topics=50, modules under tracking=600, review queue depth=200",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/"
+      ]
+    },
+    "F6": {
+      "title": "Module authoring sandbox (provider-agnostic session scoping)",
+      "hash": "be4477324af74e41",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (session writes within bounds)",
+        "session attempts to read/write outside its module dir (rejected)",
+        "session runs out of context budget (fails gracefully, module marked `needs-attention` per F2)",
+        "local provider selected but its server is not running (session fails as `cli-missing` with the repair instruction, nothing is sent anywhere)",
+        "hosted provider selected with no key set (session fails naming the variable to set, and nothing leaves the machine)",
+        "hosted provider rejects the key or the model id (session fails with what the service said, retryable)"
+      ],
+      "acceptanceCriteria": [
+        "a module-authoring session's file access is restricted to its own module directory (verified, not just documented)",
+        "session receives just enough context (topic, driving question, level, learner purpose, prerequisite edges, graph-adjacent module summaries) without the full codebase or excess tools",
+        "with a chat model set, an evaluation turn dispatches to it while authoring still dispatches to the planning model, on one provider and without restarting the app",
+        "clearing the chat model returns both roles to the planning model",
+        "a chat model that is set but unreachable or not installed is reported by the Settings probe as not-ready, naming the chat role, rather than failing first mid-conversation",
+        "switching provider in Settings takes effect on the next session without restarting the app",
+        "the provider is probed before it is relied on, and an unreachable Ollama server or an un-pulled model is reported with the command that fixes it",
+        "with a provider that runs on this computer selected, Settings says the text stays here, and with any other it names the service the text is sent to",
+        "Settings offers a connection test that makes one cheap call to the selected provider and reports in plain language whether it worked",
+        "a missing key is reported as the name of the variable to set, never as a network failure, and no request is sent",
+        "Settings shows whether a key is present without ever showing the key",
+        "every provider is covered by unit tests against a fake server, in the default test run; tests that touch a real network live apart from it"
+      ],
+      "perfBudgets": [],
+      "requiresE2E": false,
+      "asserts": null,
+      "scale": null,
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false
+    },
+    "F7": {
+      "title": "Spaced review",
+      "hash": "ad987e7f8c7f59e5",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (review surfaces on schedule, answered correctly, interval extends)",
+        "review answered incorrectly (interval shortens, module flagged `needs-review`)",
+        "module untouched long enough to hit max interval (still resurfaces, never \"graduates\" out of scheduling entirely)"
+      ],
+      "acceptanceCriteria": [
+        "a completed module is never permanently \"done\" — it re-enters the review queue per the schedule",
+        "a review question is not a verbatim repeat of the original eval question",
+        "missing a review does not block other learning (queue, not gate)",
+        "no stability, difficulty or retrievability value appears in any API response or anywhere in the UI",
+        "an existing learner's review schedule survives the upgrade — stored intervals are carried into the new memory model, never reset"
+      ],
+      "perfBudgets": [],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "modules under active review=600, reviews/day at steady state=15",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/review"
+      ]
+    },
+    "F8": {
+      "title": "Interleaved practice",
+      "hash": "826f71c8642030a2",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (mixed session across ≥2 topics)",
+        "only one topic has completed modules (falls back to single-topic practice, no error)",
+        "user stops mid-session (partial results saved)"
+      ],
+      "acceptanceCriteria": [
+        "a single interleaved session never draws all questions from one module/topic when ≥2 topics have completed modules",
+        "session length is bounded (user can stop after any question, progress on answered questions is kept)"
+      ],
+      "perfBudgets": [
+        {
+          "op": "session start",
+          "budgetMs": 300,
+          "percentile": 95
+        }
+      ],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "candidate module pool=600, questions per session=15",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/practice"
+      ]
+    },
+    "F9": {
+      "title": "Cross-topic synthesis prompts",
+      "hash": "19b8bcb60728756d",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (user articulates the connection)",
+        "user fails and gets explanation + re-ask",
+        "fewer than 2 topics completed (feature inactive, not shown)"
+      ],
+      "acceptanceCriteria": [
+        "a synthesis prompt names both topics explicitly in the question",
+        "passing/failing a synthesis prompt does not affect either topic's own completion state (it's additive, not gating)"
+      ],
+      "perfBudgets": [],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": null,
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/synthesis"
+      ]
+    },
+    "F10": {
+      "title": "Learner-set goals & self-assessment",
+      "hash": "0dda428276fa263e",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (predict, then compare after pass)",
+        "user skips prediction (module proceeds normally, no comparison shown)",
+        "prediction wildly miscalibrated (comparison still shown plainly, no judgment framing)",
+        "self-assessments present (included in the comparison)"
+      ],
+      "acceptanceCriteria": [
+        "pre-module prediction is a single lightweight prompt, not a blocking form (skippable)",
+        "calibration comparison is shown once per module, immediately after evaluation passes, not buried in a later report",
+        "self-assessment comparison appears only when the learner provided self-assessments (absence is silent, not an empty section)"
+      ],
+      "perfBudgets": [
+        {
+          "op": "prediction prompt render",
+          "budgetMs": 100,
+          "percentile": 95
+        }
+      ],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "modules with predictions=600",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/journal"
+      ]
+    },
+    "F11": {
+      "title": "Reflection journal",
+      "hash": "dfcc46622bef2d83",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (reflection written, later surfaced at review)",
+        "no reflection written (review proceeds without the callback)",
+        "reflection edited after being written (latest version surfaces)"
+      ],
+      "acceptanceCriteria": [
+        "reflection entry is optional and never blocks progress",
+        "a stored reflection is shown back verbatim at the next scheduled review of that module, not summarized/altered"
+      ],
+      "perfBudgets": [],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": null,
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/journal"
+      ]
+    },
+    "F12": {
+      "title": "Learner-directed pacing & branching",
+      "hash": "2df598316bfb7893",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (detour requested, generated, inserted, completed)",
+        "detour request during an already-`needs-attention` topic (declined until topic stabilizes, user informed why)",
+        "user abandons detour partway (core path progress unaffected)"
+      ],
+      "acceptanceCriteria": [
+        "a requested detour becomes a new module authored via the same F6 sandboxed session contract, inserted as a new node in the module graph (with prerequisite edges where genuine) without disrupting already-completed modules' state",
+        "user can decline/skip a completed detour without it counting against core-graph progress",
+        "a detour never becomes a prerequisite of an already-existing module"
+      ],
+      "perfBudgets": [],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "detours per topic=3",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/topics/[id]"
+      ]
+    },
+    "F13": {
+      "title": "Capstone project",
+      "hash": "67b2f37776648df8",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (build, submit, pass)",
+        "submission falls short (specific feedback, revise, resubmit, pass)",
+        "learner purpose too vague for an authentic build (F2 falls back to a synthesis design problem spanning the topic's modules)",
+        "capstone attempted past the advisory with prereq modules incomplete"
+      ],
+      "acceptanceCriteria": [
+        "the capstone spec explicitly references the driving question and the learner's purpose",
+        "assessment judges the produced artifact/solution, not recall questions",
+        "prior-round feedback remains visible across revisions",
+        "a topic is not `done` until the capstone passes"
+      ],
+      "perfBudgets": [],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "revision rounds per capstone=5",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/topics/[id]/capstone"
+      ]
+    },
+    "F14": {
+      "title": "Flash card library",
+      "hash": "",
+      "parent": null,
+      "children": [],
+      "paths": [
+        "happy (make a deck, paste a list, study it)",
+        "a single card typed in by hand",
+        "a paste where some lines have no separator (cards made from the rest, the others named)",
+        "a paste that splits into nothing (the box is left filled so the learner can fix it)",
+        "studying with nothing due (an empty queue stated as a normal place to be, not an error)",
+        "a card edited mid-schedule (text changes, schedule does not)",
+        "a deck attached to a subject the learner later deletes",
+        "a card answered while the app cannot save it (the answer is reported as unsaved and the learner's place in the round is kept)"
+      ],
+      "acceptanceCriteria": [
+        "the back of a card is not in the page until the learner reveals it, and the three answer buttons are not offered before the back is shown",
+        "a card answered \"knew it\" comes back later than the same card answered \"didn't know it\", and a missed card is counted as a lapse",
+        "no stability, difficulty or retrievability value appears in any API response or anywhere in the UI, and no card surface expresses a proportion or a score",
+        "every line of a paste either becomes a card or is named in the skipped list",
+        "a card whose text is edited keeps its due date and its memory state exactly",
+        "deleting a deck deletes its cards and leaves every other deck whole",
+        "a deck may be created with no subject attached, and a deck naming a subject that no longer exists is refused rather than orphaned"
+      ],
+      "perfBudgets": [
+        {
+          "op": "study queue start",
+          "budgetMs": 300,
+          "percentile": 95
+        }
+      ],
+      "requiresE2E": true,
+      "asserts": null,
+      "scale": "decks=100, cards per deck=1000, cards per paste=500, cards per study round=60",
+      "status": "active",
+      "lastBuildStatus": null,
+      "uiConverged": false,
+      "uiRoutes": [
+        "/cards",
+        "/cards/[deckId]"
+      ]
+    }
+  },
+  "components": {
+    "C0": {
+      "title": "Cross-cutting",
+      "hash": "1a4539a51603611b",
+      "implements": [],
+      "dependsOn": [],
+      "consumes": [],
+      "ownsShapes": [
+        "ISODateString",
+        "TopicId",
+        "ModuleId",
+        "SessionId",
+        "Level",
+        "TopicStatus",
+        "ModuleState",
+        "Topic",
+        "TopicNote",
+        "DiagnosticTranscript",
+        "ModuleNode",
+        "PrereqEdge",
+        "ModuleGraph",
+        "Explanation",
+        "Visualization",
+        "LessonBlock",
+        "WarmUp",
+        "ModuleContent",
+        "EvalScript",
+        "TeachBackMisconception",
+        "AssistLevel",
+        "EvalTurn",
+        "SelfAssessment",
+        "EvalVerdict",
+        "EvalSession",
+        "ReviewItem",
+        "PracticeSession",
+        "PracticeQuestion",
+        "Prediction",
+        "Calibration",
+        "Reflection",
+        "Capstone",
+        "CapstoneSubmission",
+        "Job",
+        "JobKind",
+        "JobStatus",
+        "GenerationProgress",
+        "CliSessionSpec",
+        "CliSessionResult",
+        "ErrorCode",
+        "AppError",
+        "ApiOk<T>",
+        "ApiOk",
+        "ApiErr",
+        "AppConfig",
+        "AppPaths",
+        "SourceId",
+        "SourceKind",
+        "SourceUnit",
+        "SourceDocument",
+        "StagedSource"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a. `IS_RELEASE` is defined here (`false` in dev, `true` in the release build) and is the exclusion mechanism every other component names.",
+      "failureModes": [
+        "`config.json` unparseable → banner \"Settings file could not be read; running on defaults\" naming the file → full defaults loaded, `configWarnings` populated, the file is left untouched → user exit: the Settings screen, which renders from defaults and never reads the broken file (H13)",
+        "a config key holds an out-of-range value → same banner naming the field → that one field drops to its default → user exit: Settings screen",
+        "`.scrub-salt` missing → no user-visible effect → a new salt is minted; old digests stop correlating, no data is lost → user exit: n/a",
+        "log directory unwritable → one stderr line, once per process, plus a Settings-screen warning → logging degrades to stderr only, the app continues → user exit: change `dataRoot` in Settings or fix permissions"
+      ],
+      "stateLifecycle": [
+        "location: `.scrub-salt` only, beside the store (`<dataRoot>/.scrub-salt`); the database is C1's",
+        "key custody: n/a (the salt is not a key; it is never used to decrypt anything and is never logged)",
+        "durability: write temp → fsync → rename → fsync dir; minted once, never rotated automatically",
+        "file mode: 0600, set on the temp file before the rename",
+        "schema versioning: n/a (16 raw bytes)",
+        "recovery: corrupt or short → mint a new salt and log loudly | missing → mint | newer schema → n/a"
+      ],
+      "egress": [
+        "data classes held: `pii` (learner free text passes through `scrub()`), `internal`",
+        "log sink ← `internal` only ← `scrub()` on every emit, always on ← on",
+        "repository (committed files) ← `public` ← `.gitignore` covers `data/`, `logs/`, `*.ndjson`, `.env*`, `.fractal/`, `.claude/settings.local.json` ← n/a"
+      ],
+      "trustBoundaries": [
+        "inbound: environment variables and `config.json` ← the local user only, same trust level as the process ← n/a ← parsed leniently per H13"
+      ],
+      "sinks": [
+        "fs-path at `paths()` ← `dataRoot` from config ← resolved to an absolute path at load; `moduleDir()` validates `TopicId`/`ModuleId` against their patterns before joining and asserts the resolved result `is-relative-to` `topicsDir` (H12: a shape guarantees structure, never value)"
+      ],
+      "longRunningWork": [],
+      "concurrencyModel": "sync",
+      "offloaded": "none",
+      "plannedFiles": [
+        "src/shapes.ts",
+        "src/core/paths.ts",
+        "src/core/config.ts",
+        "src/core/log.ts",
+        "src/core/scrub.ts",
+        "src/core/errors.ts",
+        "src/core/release.ts"
+      ],
+      "plannedTests": [
+        "tests/core/shapes.test.ts",
+        "tests/core/config.test.ts",
+        "tests/core/scrub.test.ts",
+        "tests/core/paths.test.ts",
+        "tests/egress/log-sink.test.ts",
+        "tests/claims/docs.test.ts"
+      ],
+      "lastBuildStatus": null
+    },
+    "C1": {
+      "title": "Store",
+      "hash": "69efab69a5ddf9ee",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "dependsOn": [
+        "C0"
+      ],
+      "consumes": [
+        "Topic",
+        "TopicNote",
+        "ModuleNode",
+        "PrereqEdge",
+        "ModuleGraph",
+        "ModuleState",
+        "EvalSession",
+        "EvalTurn",
+        "EvalVerdict",
+        "ReviewItem",
+        "Reflection",
+        "Prediction",
+        "Calibration",
+        "Capstone",
+        "Job",
+        "JobStatus",
+        "AppError",
+        "AppPaths",
+        "ISODateString",
+        "TopicId",
+        "ModuleId",
+        "SessionId"
+      ],
+      "ownsShapes": [
+        "NewTopic",
+        "DegradedTopic",
+        "StoreHealth"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a",
+      "failureModes": [
+        "database file missing → no message; a fresh store is minted and the app opens empty → nothing to recover → user exit: n/a",
+        "database corrupt / unreadable → full-screen \"Your learning data could not be opened\" naming the file path and the `.prev` fallback → `learn.db.prev` is loaded read-write, the corrupt file is renamed `learn.db.corrupt-<ts>`, loudly logged → user exit: an in-app \"Use the previous generation\" button plus the stated path; never requires a file manager",
+        "recorded schema version exceeds the highest known migration → \"This data was written by a newer version of the app\" → the store is **not** opened and **not** written → user exit: install the newer version, or restore `.prev`; the message names both",
+        "a migration throws mid-run → the transaction rolls back; neither partial schema nor the bumped version row survives → same corrupt-store screen → user exit: `.prev` fallback",
+        "one topic row fails to parse → that topic renders as a `DegradedTopic` card marked \"needs attention\"; every other topic is unaffected → nothing is skipped (H4) → user exit: a Delete button on the degraded card, implemented with an id-only delete that never reads the broken content",
+        "disk full on write → toast \"Could not save — disk full\", the in-memory value is retained and the write is retried on the next action → no partial row is committed → user exit: free space and retry from the same screen"
+      ],
+      "stateLifecycle": [
+        "location: `<dataRoot>/learn.db` — Windows `%LOCALAPPDATA%\\learn-assistant`, macOS `~/Library/Application Support/learn-assistant`, Linux `~/.local/share/learn-assistant`; overridable by `LA_DATA_ROOT`",
+        "key custody: none. The store is **not encrypted**; it holds the learner's own notes on a machine they control, and there is no credential in it. This is stated plainly in the README rather than implied to be encrypted (H7). If encryption is added later it gets a real key-custody row.",
+        "durability: SQLite in WAL mode with `synchronous=FULL`; a backup generation is produced by `VACUUM INTO learn.db.prev.tmp` → fsync → rename → fsync dir, once per app start after a successful open, and after each migration",
+        "file mode: 0600 on `learn.db`, `learn.db-wal`, `learn.db-shm`, and `learn.db.prev`, set at creation",
+        "schema versioning: `user_version` pragma; forward migrations in one transaction each; **downgrade guard** — refuse to open when `user_version > highestKnownMigration`; a seeded identity migration exists so the next field addition has somewhere to live",
+        "recovery: corrupt → `.prev` fallback, loud log, corrupt file preserved | missing key → n/a (no key) | missing store → mint | newer schema → refuse to open and say so"
+      ],
+      "egress": [
+        "data classes held: `pii` (learner free text, chat transcripts, reflections), `internal`",
+        "SQLite store ← `pii`, `internal` ← filesystem perms, mode 0600 ← on",
+        "log sink ← `internal` only; row contents are never logged, only ids and counts ← `scrub()` ← on"
+      ],
+      "trustBoundaries": [
+        "inbound: none directly — every caller is in-process. C9 is the only path from outside."
+      ],
+      "sinks": [
+        "sql at every repository function ← ids and values from callers ← **parameterised statements only**; no string interpolation into SQL anywhere; ids are re-validated against their C0 patterns at the repository boundary",
+        "fs-path at `openStore` / backup ← `AppPaths` only ← paths come from C0's `paths()`, never from a caller"
+      ],
+      "longRunningWork": [
+        "`VACUUM INTO` backup | max 2s at declared scale | timeout 30s | cancellable: no — it is bounded, single-shot, and off the request path (justified: interrupting a backup produces no user-visible benefit and the temp file is deleted on failure) | owner: process | on owner exit: temp file deleted | progress: none needed",
+        "migration run | max 1s at declared scale | timeout 60s | cancellable: no (justified: a partially applied migration is worse than a slow one; it is transactional) | owner: process | on owner exit: transaction rolls back | progress: startup screen states \"Upgrading your data\""
+      ],
+      "concurrencyModel": "sync, called from the async event loop",
+      "offloaded": "the startup backup (`VACUUM INTO`) runs in a worker thread; every statement on the request path is bounded (< 5ms at declared scale) and measured by the loop-blocking test",
+      "plannedFiles": [
+        "src/store/open.ts",
+        "src/store/migrations.ts",
+        "src/store/schema.sql.ts",
+        "src/store/topics.ts",
+        "src/store/modules.ts",
+        "src/store/evals.ts",
+        "src/store/reviews.ts",
+        "src/store/reflections.ts",
+        "src/store/jobs.ts",
+        "src/store/complete.ts"
+      ],
+      "plannedTests": [
+        "tests/store/topics.test.ts",
+        "tests/store/complete.test.ts",
+        "tests/durability/store.test.ts",
+        "tests/recovery/degraded-topic.test.ts",
+        "tests/recovery/store-corrupt.test.ts",
+        "tests/perf/store-scale.perf.ts",
+        "tests/store/sql-injection.test.ts"
+      ],
+      "lastBuildStatus": null
+    },
+    "C2": {
+      "title": "AI session runner (provider abstraction + sandbox)",
+      "hash": "d39a933bc3f59839",
+      "implements": [
+        "F6"
+      ],
+      "dependsOn": [
+        "C0"
+      ],
+      "consumes": [
+        "CliSessionSpec",
+        "CliSessionResult",
+        "SessionId",
+        "Level",
+        "AppError",
+        "AppPaths",
+        "ISODateString"
+      ],
+      "ownsShapes": [
+        "ModuleBrief",
+        "CliAvailability",
+        "SandboxSnapshot"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a. The `LA_FAKE_CLI` transport used by tests lives in `src/cli/transport.fake.ts` and is **test-only**, excluded by `IS_RELEASE` (dead-code eliminated) — and its selection compares `process.env.LA_FAKE_CLI === \"1\"` exactly, never definedness (H1).",
+      "failureModes": [
+        "`claude` binary not found → a persistent banner \"The Claude CLI is not installed or not on PATH\", with the exact install command and the `LA_CLAUDE_BIN` override → no session is dispatched; the topic stays `queued`, nothing is marked failed → user exit: install, then a \"Retry\" button on the topic",
+        "session exceeds its timeout → the module shows \"Authoring timed out\", the topic goes `needs-attention` → the child's process group is killed, partial files in the module dir are discarded, the job is retryable → user exit: a \"Retry this module\" button",
+        "child writes outside the module directory → the session fails with `sandbox-violation`; the module shows \"Authoring session was blocked\" → every file the session wrote is reverted from the pre-run snapshot, the violation is logged with the offending relative path → user exit: Retry",
+        "child exits non-zero → \"Authoring failed\" plus the stable message → stderr is logged under a correlation id, never surfaced verbatim → user exit: Retry, and the log path is shown",
+        "child produces unparseable output → treated as `nonzero-exit`; the raw output is logged, not shown → user exit: Retry",
+        "child runs out of context → `context-exhausted`; the module is marked `needs-attention` per F2 → partial content is discarded → user exit: Retry (the brief is trimmed on the retry)",
+        "cancel requested → the module returns to its previous state → the process group is killed and awaited, the in-flight flag is cleared in a `finally` → user exit: n/a"
+      ],
+      "stateLifecycle": [],
+      "egress": [
+        "data classes held: `pii` (the brief contains the learner's purpose and prior-knowledge statements) — held transiently for the duration of one session",
+        "`claude` CLI subprocess (argv + stdin) → Anthropic API ← `pii`, `internal` ← the learner's press on the control that asked for the work; the sandbox and the `sessionConcurrency` limit bound it ← **on** (single-user local app)",
+        "Ollama / llama.cpp server on `127.0.0.1` (prompt in the request body) ← `pii`, `internal` ← same press; only when the provider is `ollama` or `llama` ← off (provider defaults to `claude`) — nothing leaves the machine",
+        "OpenAI-compatible endpoint (`<baseUrl>/chat/completions`) ← `pii`, `internal` ← same press; only when the provider is `openai`, `openai-compatible` or `mistral`. Whether this leaves the machine is `leavesThisMachine()` on the configured base URL, not a fixed property of the provider — an `openai-compatible` pointed at `127.0.0.1:1234` goes nowhere ← off",
+        "Google Gemini (`<baseUrl>/models/<id>:streamGenerateContent`) ← `pii`, `internal` ← same press; only when the provider is `gemini` ← off",
+        "Anthropic API direct (`<baseUrl>/v1/messages`, via `@anthropic-ai/sdk`) ← `pii`, `internal` ← same press; only when the provider is `anthropic` ← off",
+        "module directory ← `pii`, `internal` ← path confinement ← on",
+        "log sink ← `internal` only: session id, kind, duration, exit code, file count. **Prompt text and model output are never logged**, only their byte lengths and a digest. **No API key is ever logged**: a key is read at the moment of use, never lands in `AppConfig`, and every key variable name is covered by `scrub()` ← `scrub()` ← on"
+      ],
+      "trustBoundaries": [
+        "inbound: the session's **output** ← the Claude CLI or a provider's HTTP response, i.e. model-generated content ← not authenticated, and treated as untrusted data: parsed against the module-content schema, never `eval`'d, never used to build a path, and rendered as Markdown with HTML disabled and a strict sanitizer (C10)",
+        "inbound: the session's **file writes** ← model-generated ← for the CLI, confined to `moduleDir` by `--add-dir`; for every other provider the model names a relative path in its answer and `takeWorkspaceWrites` resolves and rejects it before anything is written. Both are then held to the same post-run snapshot diff; a symlink inside the module dir pointing outside it is detected by resolving every written path before comparison",
+        "inbound: the provider's **base URL** ← `AppConfig`, from Settings or `LA_<PROVIDER>_URL` ← validated as a URL before it is stored; it is a request target only, never a path and never a shell word"
+      ],
+      "sinks": [
+        "exec at `spawn(claudeBin, argv)` ← `claudeBin` from **config only, never from a caller or a wire value** (H12: a stored setting outranks a wire value); argv is a fixed array, never a shell string; `shell: false` always",
+        "fs-path at `moduleDir` ← `TopicId` + `ModuleId` ← both pattern-validated in C0's `moduleDir()`, then the resolved path is asserted `is-relative-to` `topicsDir`",
+        "deserialize at `JSON.parse(childStdout)` ← model output ← size-capped at 1 MB, parsed then validated against the `ModuleContent` guard; a failure is `nonzero-exit`, never a partial write"
+      ],
+      "longRunningWork": [
+        "`runSession` (authoring) | max 300s | timeout 600s, plus a 90s no-output stall watchdog | cancellable: `AbortSignal` → `SIGTERM` to the process group, `SIGKILL` after 5s, awaited | owner: the job (C4) | on owner exit: cancel | progress: bytes-since-last-tick emitted to C4, so a stalled session is distinguishable from a slow one",
+        "`runSession` (evaluation turn) | max 60s | timeout 120s, 30s stall watchdog | cancellable: same | owner: the HTTP request / eval session | on owner exit: cancel | progress: token stream ticks",
+        "`checkCli` | max 2s | timeout 5s | cancellable: yes | owner: process | on owner exit: cancel | progress: n/a"
+      ],
+      "concurrencyModel": "async event loop",
+      "offloaded": "the child process itself; the snapshot digest walk runs in a worker thread (it is a hashing loop over the module dir, and it is on the path of every session)",
+      "plannedFiles": [
+        "src/cli/run-session.ts",
+        "src/cli/sandbox.ts",
+        "src/cli/prompt.ts",
+        "src/cli/chat.ts",
+        "src/cli/workspace.ts",
+        "src/cli/http-session.ts",
+        "src/cli/ollama.ts",
+        "src/cli/llama.ts",
+        "src/cli/openai.ts",
+        "src/cli/gemini.ts",
+        "src/cli/anthropic.ts",
+        "src/cli/availability.ts",
+        "src/cli/semaphore.ts",
+        "src/cli/transport.fake.ts"
+      ],
+      "plannedTests": [
+        "tests/cli/sandbox.test.ts",
+        "tests/cli/workspace.test.ts",
+        "tests/cli/prompt.test.ts",
+        "tests/cli/timeout.test.ts",
+        "tests/cli/concurrency.test.ts",
+        "tests/cli/only-spawner.test.ts",
+        "tests/cli/remote-providers.test.ts",
+        "tests/lifecycle/session-runner.test.ts",
+        "tests/sinks/exec.test.ts",
+        "tests/sinks/fs-path.test.ts",
+        "tests/release/surface.test.ts",
+        "e2e/f6-sandbox.spec.ts"
+      ],
+      "lastBuildStatus": null
+    },
+    "C4": {
+      "title": "Curriculum orchestrator",
+      "hash": "f26ff926751ac868",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "dependsOn": [
+        "C0",
+        "C1",
+        "C2",
+        "C5",
+        "C11"
+      ],
+      "consumes": [
+        "NewTopic",
+        "Topic",
+        "TopicNote",
+        "ModuleGraph",
+        "ModuleNode",
+        "PrereqEdge",
+        "ModuleContent",
+        "Job",
+        "JobKind",
+        "JobStatus",
+        "GenerationProgress",
+        "CliSessionSpec",
+        "CliSessionResult",
+        "AppError",
+        "ModuleBrief",
+        "TopicMaterial",
+        "MaterialBrief"
+      ],
+      "ownsShapes": [
+        "GenerationPlan",
+        "DetourRequest",
+        "GraphValidation"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a",
+      "failureModes": [
+        "research session fails → \"Could not research an outline for this subject\" → falls back to a generic decomposition by subtopic (an F2 path), topic continues → user exit: proceed, or delete the topic",
+        "one authoring session fails or times out → that module card reads \"Authoring failed\"; the topic goes `needs-attention` → every other module is kept and usable → user exit: \"Retry this module\", or \"Continue without it\"",
+        "every authoring session fails → topic `needs-attention` with the shared cause named once (e.g. CLI missing) → nothing partial is presented as complete → user exit: fix the named cause, then \"Retry topic\"",
+        "discontinuity review finds a gap → the lessons it names are rewritten with the finding attached and the check runs again, for up to `MAX_REPAIR_ROUNDS` rounds of `REPAIR_TARGETS_PER_ROUND` lessons → the topic flips to `ready` when the loop converges; nothing about the seams is shown, because a pedagogical defect in work the app did is not something the reader can act on → user exit: none needed",
+        "the repair loop runs out of rounds, or a finding names no lesson this topic has → what is left is logged as `curriculum-repair-unresolved` and the topic is `ready` → the lessons are all still the lessons that were there → user exit: none needed",
+        "discontinuity review itself fails → topic is `ready-with-notes` carrying one note \"consistency check could not run\" → modules are not blocked → user exit: \"Run the check again\"",
+        "the graph comes back cyclic → the cycle is broken by dropping the lowest-confidence edge, and `curriculum-graph-repaired` in the log names exactly which edge was dropped → never silently accepted, and never shown: by the time anything renders, the graph IS the corrected graph → user exit: none needed",
+        "detour requested while the topic is `needs-attention` → declined with the reason stated (\"finish or retry the failed module first\") → nothing is queued → user exit: retry the failed module",
+        "process restarts mid-generation → the topic shows \"Resuming\" → jobs left `running` at boot are reset to `queued` (attempts preserved), and the module directories are cleaned back to their last committed state → user exit: automatic; the Stop button remains available"
+      ],
+      "stateLifecycle": [
+        "location: module directories under `<dataRoot>/topics/<topicId>/modules/<moduleId>/`; the graph and job rows live in C1",
+        "key custody: n/a",
+        "durability: a module is committed by writing `content.json` (temp → fsync → rename → fsync dir) **and then** inserting the module row in C1 in one transaction that also records the content digest. The row is written **second**, and the loader keys discovery on the **row**, so an interruption in the gap leaves an orphan directory, never a module the reader silently skips (H4). A startup sweep reconciles orphan directories against rows and rebuilds the row from `content.json` when the digest validates.",
+        "file mode: 0600 on files, 0700 on module directories",
+        "schema versioning: `content.json` carries `contentVersion`, compared on read; a newer version is a degraded module with a named reason, never a silent load",
+        "recovery: corrupt `content.json` → the module renders degraded with a Retry affordance | missing directory but present row → the module is marked `needs-attention` and is retryable | present directory but missing row → rebuilt if the digest validates, else deleted on the learner's confirmation | newer `contentVersion` → degraded, \"written by a newer version\""
+      ],
+      "egress": [
+        "data classes held: `pii` (purpose, diagnostic transcript, prior knowledge — all fed into briefs)",
+        "`claude` CLI subprocess ← `pii`, `internal` ← **via C2 only** ← on",
+        "module directories ← `pii`, `internal` ← path confinement ← on",
+        "log sink ← `internal`: job ids, kinds, durations, module counts. Never brief or content text ← `scrub()` ← on"
+      ],
+      "trustBoundaries": [
+        "inbound: enqueue/retry/detour calls ← the local browser via C9 ← bearer token ← single-user",
+        "inbound: **model-authored content** ← the Claude CLI ← untrusted: `content.json` is validated against the `ModuleContent` guard before any row is written; `Explanation.url` is accepted only if it parses as `https:` with a host in the video-host allowlist, otherwise the explanation is coerced to `kind: \"text\"`; every module id referenced in a proposed edge must already exist in this topic"
+      ],
+      "sinks": [
+        "fs-path at the module directory writer ← `TopicId`, `ModuleId` from the store (never from model output) ← C0's `moduleDir()` pattern validation plus a resolved-path containment assertion",
+        "url at the video-link validator ← `Explanation.url` from model output ← `https:` only, host allowlist (`youtube.com`, `youtu.be`, `vimeo.com`), no credentials in the URL, no private ranges; the app never fetches it — the learner clicks it",
+        "deserialize at `content.json` read ← model-written file ← 1 MB cap, schema-validated, never `eval`'d"
+      ],
+      "longRunningWork": [
+        "`generate-topic` (whole pipeline) | max 20 min at declared scale (the F2 budget) | timeout 60 min overall, with per-session timeouts from C2 | cancellable: yes — `AbortController` per job, threaded into C2's child kill | owner: the job row; the job engine is the process-level owner | on owner exit: in-flight jobs are cancelled and reset to `queued` at next boot | progress: `GenerationProgress` with `modulesDone` and `lastTickAt`, so the UI distinguishes stalled from slow",
+        "`discontinuity-review` | max 5 min | timeout 10 min | cancellable: yes | owner: the job | on owner exit: cancel, topic stays `ready-with-notes` pending the re-run | progress: phase tick"
+      ],
+      "concurrencyModel": "async event loop",
+      "offloaded": "every model call is already a child process; graph validation (topological sort, reachability) runs inline and is bounded at `scale: modules per topic=12`; content digesting runs in a worker thread",
+      "plannedFiles": [
+        "src/orchestrator/engine.ts",
+        "src/orchestrator/plan.ts",
+        "src/orchestrator/research.ts",
+        "src/orchestrator/author-module.ts",
+        "src/orchestrator/capstone-spec.ts",
+        "src/orchestrator/discontinuity.ts",
+        "src/orchestrator/repair.ts",
+        "src/orchestrator/repair.budget.ts",
+        "src/orchestrator/prepare-available.ts",
+        "src/orchestrator/prep-window.ts",
+        "src/orchestrator/detour.ts",
+        "src/orchestrator/content-validate.ts",
+        "src/orchestrator/reconcile.ts"
+      ],
+      "plannedTests": [
+        "tests/orchestrator/plan.test.ts",
+        "tests/orchestrator/generate.test.ts",
+        "tests/orchestrator/failure.test.ts",
+        "tests/orchestrator/discontinuity.test.ts",
+        "tests/orchestrator/repair.test.ts",
+        "tests/orchestrator/graph-validate.test.ts",
+        "tests/orchestrator/detour.test.ts",
+        "tests/orchestrator/content-validate.test.ts",
+        "tests/durability/module-commit.test.ts",
+        "tests/lifecycle/job-engine.test.ts",
+        "tests/perf/generation.perf.ts",
+        "e2e/f2-generation.spec.ts",
+        "e2e/f12-detour.spec.ts"
+      ],
+      "lastBuildStatus": null
+    },
+    "C5": {
+      "title": "Module graph service",
+      "hash": "4ba9b2834a82e3b1",
+      "implements": [
+        "F3",
+        "F5",
+        "F12"
+      ],
+      "dependsOn": [
+        "C0",
+        "C1"
+      ],
+      "consumes": [
+        "ModuleGraph",
+        "ModuleNode",
+        "PrereqEdge",
+        "ModuleState",
+        "ModuleId",
+        "TopicId",
+        "TopicStatus",
+        "AppError"
+      ],
+      "ownsShapes": [
+        "ModuleAvailability",
+        "EntryDecision",
+        "InsertionCheck",
+        "DashboardView"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a",
+      "failureModes": [
+        "the stored graph is cyclic (a defect that escaped C4) → the graph view renders with the cycle highlighted and a note \"this topic's prerequisite links contain a loop\" → availability is computed over the graph with back-edges ignored, so every module is still reachable and enterable → user exit: \"Re-run the consistency check\" on the topic page",
+        "a prerequisite edge references a missing module → the edge renders greyed as \"missing prerequisite\" → it is ignored for availability rather than blocking the dependent module → user exit: re-run the consistency check",
+        "completion write fails (C1 error) → toast \"Could not record completion — retrying\"; the optimistic UI state rolls back → nothing partially applied; unlock and review scheduling share the completion's transaction → user exit: retry the same action",
+        "a graph with zero entry modules (every node has an unmet prerequisite) → a note plus **every** node presented as enterable-with-advisory → the learner is never stuck behind an empty available set → user exit: enter any module past the advisory"
+      ],
+      "stateLifecycle": [],
+      "egress": [
+        "data classes held: `internal` (ids, titles, counts) only",
+        "log sink ← `internal` ← `scrub()` ← on"
+      ],
+      "trustBoundaries": [
+        "inbound: none directly; called in-process by C4, C6, C9."
+      ],
+      "sinks": [],
+      "longRunningWork": [],
+      "concurrencyModel": "sync, called from the async event loop",
+      "offloaded": "none — the dashboard is one query plus an O(V+E) pass, measured at declared scale by the loop-blocking test",
+      "plannedFiles": [
+        "src/graph/availability.ts",
+        "src/graph/entry.ts",
+        "src/graph/insertion.ts",
+        "src/graph/rollup.ts",
+        "src/graph/dashboard.ts"
+      ],
+      "plannedTests": [
+        "tests/graph/availability.test.ts",
+        "tests/graph/entry.test.ts",
+        "tests/graph/insertion.test.ts",
+        "tests/graph/rollup.test.ts",
+        "tests/graph/no-grades.test.ts",
+        "tests/perf/dashboard.perf.ts",
+        "e2e/f3-graph.spec.ts",
+        "e2e/f5-dashboard.spec.ts"
+      ],
+      "lastBuildStatus": null
+    },
+    "C6": {
+      "title": "Evaluation engine",
+      "hash": "86be14748846e0dc",
+      "implements": [
+        "F4",
+        "F9",
+        "F13"
+      ],
+      "dependsOn": [
+        "C0",
+        "C1",
+        "C2",
+        "C4",
+        "C5",
+        "C7"
+      ],
+      "consumes": [
+        "EvalSession",
+        "EvalTurn",
+        "EvalVerdict",
+        "EvalScript",
+        "TeachBackMisconception",
+        "AssistLevel",
+        "SelfAssessment",
+        "Capstone",
+        "CapstoneSubmission",
+        "CliSessionSpec",
+        "CliSessionResult",
+        "ModuleId",
+        "TopicId",
+        "SessionId",
+        "AppError",
+        "ModuleBrief"
+      ],
+      "ownsShapes": [
+        "EvalTarget",
+        "LearnerMessage",
+        "EvalTurnResult",
+        "AngleLedger"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a",
+      "failureModes": [
+        "the evaluation session fails or times out → the chat shows \"The evaluator did not respond\" with a Retry on that message → the learner's message is already persisted, so nothing is retyped; no verdict is recorded → user exit: Retry the message",
+        "the model returns an unparseable verdict → same as above, and the raw output is logged under a correlation id, never shown → the turn is not appended → user exit: Retry",
+        "the model returns a `pass` whose rationale does not reference the module's `passCriteria` → treated as `continue`, not `pass` (fail closed on the decision that grants completion, H3) → the module stays open → user exit: continue the conversation",
+        "every remaining angle is used up → the evaluator switches to teach-back, and if that is exhausted, a remedial mini-module is requested → the same question is never re-asked verbatim → user exit: the remedial module, then a fresh angle",
+        "the remedial request is declined (topic `needs-attention`) → the chat says so plainly and offers to continue with hints → the loop is not silently re-entered → user exit: retry the failed module, or continue",
+        "the learner abandons mid-chat → nothing → every turn is already persisted per-turn → user exit: reopening the module resumes the same session",
+        "capstone submission cannot be stored → \"Could not save your submission\" with the text preserved in the box → nothing partially recorded → user exit: retry"
+      ],
+      "stateLifecycle": [],
+      "egress": [
+        "data classes held: `pii` (the learner's answers, self-critiques, capstone artifacts)",
+        "`claude` CLI subprocess ← `pii`, `internal` ← via C2 only ← on",
+        "log sink ← `internal`: session id, turn count, verdict outcome, assist level, angle. **Never turn text** ← `scrub()` ← on"
+      ],
+      "trustBoundaries": [
+        "inbound: `send` / `submitCapstone` ← the local browser via C9 ← bearer token ← single-user",
+        "inbound: **evaluator output** ← the Claude CLI ← untrusted: parsed against the `EvalVerdict` guard; a verdict granting completion is additionally cross-checked against `passCriteria`; the text is rendered as sanitized Markdown with HTML disabled"
+      ],
+      "sinks": [
+        "template at the evaluator prompt ← learner text + module content ← the learner's text is inserted into a delimited block, never interpolated into instruction text; a message longer than 8 KB is rejected at the boundary with a `validation` error",
+        "deserialize at the verdict parse ← model output ← 256 KB cap, schema-validated"
+      ],
+      "longRunningWork": [
+        "`send` (one evaluation turn) | max 20s | timeout 120s with a 30s stall watchdog (C2's) | cancellable: yes — navigating away or pressing Stop aborts the child | owner: the HTTP request, with the eval session as the durable owner | on owner exit: cancel the child; the learner's turn is already persisted | progress: streamed tokens; a stalled turn is distinguishable by `lastTickAt`",
+        "`submitCapstone` review | max 60s | timeout 180s | cancellable: yes | owner: request | on owner exit: cancel | progress: streamed"
+      ],
+      "concurrencyModel": "async event loop",
+      "offloaded": "the model call (child process); the near-duplicate similarity check is O(turns²) bounded at `scale: exchanges per evaluation=20` and runs inline",
+      "plannedFiles": [
+        "src/eval/session.ts",
+        "src/eval/turn.ts",
+        "src/eval/hints.ts",
+        "src/eval/angles.ts",
+        "src/eval/teach-back.ts",
+        "src/eval/remedial.ts",
+        "src/eval/synthesis.ts",
+        "src/eval/capstone.ts",
+        "src/eval/verdict-parse.ts"
+      ],
+      "plannedTests": [
+        "tests/eval/turn.test.ts",
+        "tests/eval/hints.test.ts",
+        "tests/eval/angles.test.ts",
+        "tests/eval/teach-back.test.ts",
+        "tests/eval/remedial.test.ts",
+        "tests/eval/test-out.test.ts",
+        "tests/eval/resume.test.ts",
+        "tests/eval/verdict-parse.test.ts",
+        "tests/eval/synthesis.test.ts",
+        "tests/eval/capstone.test.ts",
+        "tests/optimistic/eval-send.test.ts",
+        "tests/lifecycle/eval-session.test.ts",
+        "tests/perf/eval-send.perf.ts",
+        "e2e/f4-evaluation.spec.ts",
+        "e2e/f9-synthesis.spec.ts",
+        "e2e/f13-capstone.spec.ts"
+      ],
+      "lastBuildStatus": null
+    },
+    "C7": {
+      "title": "Review scheduler & interleaved practice",
+      "hash": "0def51a9f579727f",
+      "implements": [
+        "F7",
+        "F8",
+        "F14"
+      ],
+      "dependsOn": [
+        "C0",
+        "C1",
+        "C5",
+        "C6",
+        "C8"
+      ],
+      "consumes": [
+        "ReviewItem",
+        "PracticeSession",
+        "PracticeQuestion",
+        "AssistLevel",
+        "EvalSession",
+        "Reflection",
+        "ModuleId",
+        "TopicId",
+        "SessionId",
+        "ISODateString",
+        "AppError"
+      ],
+      "ownsShapes": [
+        "Card",
+        "CardDeck",
+        "CardGrade",
+        "CardImport",
+        "CardView",
+        "DeckSummary",
+        "MixPlan",
+        "NewCard",
+        "ReviewCue",
+        "ReviewMemory",
+        "ScheduleParams"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a",
+      "failureModes": [
+        "review-question generation fails → the review card reads \"Could not prepare this review\" with a Retry → the item stays due; its interval is untouched → user exit: Retry, or skip (skipping costs nothing — it is a queue, not a gate)",
+        "the backlog exceeds the daily cap → the queue header states \"N due, showing today's M\" with the cap named → nothing beyond the cap is shown; the rest stays due → user exit: work through it over days",
+        "a review item references a deleted module → the item is dropped from the queue and logged → the queue is not blocked by it → user exit: none needed",
+        "practice requested with zero completed modules → an empty-state that is explicitly \"nothing completed yet\", distinct from an error state (H3) → nothing dispatched → user exit: complete a module",
+        "the learner stops a practice session mid-way → answered questions are already recorded → `stoppedEarly: true`, no partial loss → user exit: n/a",
+        "the clock moves backwards (timezone change / manual set) → due items simply appear due → intervals are stored as absolute instants, never as offsets from an assumed monotonic clock; and a review recorded at an instant earlier than the item's last review is clamped to zero elapsed time rather than refused, since FSRS rejects a negative elapsed time and losing the learner's answer to a clock artefact is the worse outcome → user exit: n/a"
+      ],
+      "stateLifecycle": [],
+      "egress": [
+        "data classes held: `internal` (ids, intervals, correctness), and `pii` transiently when a reflection is surfaced into a review prompt",
+        "`claude` CLI subprocess ← `pii`, `internal` ← via C2 only ← on",
+        "log sink ← `internal` ← `scrub()` ← on"
+      ],
+      "trustBoundaries": [
+        "inbound: review/practice calls ← the local browser via C9 ← bearer token ← single-user"
+      ],
+      "sinks": [
+        "template at the review prompt ← the module's `EvalScript` plus the learner's stored reflection ← the reflection is inserted **verbatim** into a delimited quote block (F11 AC: shown back verbatim, not summarized) and never into instruction text"
+      ],
+      "longRunningWork": [
+        "`startReview` (one generated question) | max 20s | timeout 120s | cancellable: yes | owner: request | on owner exit: cancel; the item stays due | progress: streamed",
+        "backlog batching | max 1s per tick at declared scale | timeout n/a (it is a bounded query) | cancellable: yes | owner: process | on owner exit: cancel | progress: n/a"
+      ],
+      "concurrencyModel": "async event loop",
+      "offloaded": "none — the due query and the mix are one indexed query plus an O(n) pass, measured at `scale: modules under active review=600, review queue depth=200`",
+      "plannedFiles": [
+        "src/review/memory.ts",
+        "src/review/schedule.ts",
+        "src/review/cue.ts",
+        "src/review/queue.ts",
+        "src/review/question.ts",
+        "src/practice/mix.ts",
+        "src/practice/session.ts"
+      ],
+      "plannedTests": [
+        "tests/review/schedule.test.ts",
+        "tests/review/assist-weight.test.ts",
+        "tests/review/fsrs.test.ts",
+        "tests/review/review-failure.test.ts",
+        "tests/review/migration.test.ts",
+        "tests/review/no-scores.test.ts",
+        "tests/review/no-verbatim.test.ts",
+        "tests/review/queue-not-gate.test.ts",
+        "tests/practice/mix.test.ts",
+        "tests/practice/stop.test.ts",
+        "tests/optimistic/practice-answer.test.ts",
+        "tests/perf/practice-start.perf.ts",
+        "tests/perf/review-queue.perf.ts",
+        "e2e/f7-review.spec.ts",
+        "e2e/f8-practice.spec.ts"
+      ],
+      "lastBuildStatus": null
+    },
+    "C8": {
+      "title": "Reflection & calibration",
+      "hash": "d5099577c3e72bd2",
+      "implements": [
+        "F10",
+        "F11"
+      ],
+      "dependsOn": [
+        "C0",
+        "C1"
+      ],
+      "consumes": [
+        "Prediction",
+        "Calibration",
+        "SelfAssessment",
+        "AssistLevel",
+        "Reflection",
+        "ModuleId",
+        "TopicId",
+        "ISODateString",
+        "AppError"
+      ],
+      "ownsShapes": [
+        "NewReflection",
+        "CalibrationView"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a",
+      "failureModes": [
+        "reflection save fails → toast \"Could not save — your text is still here\"; the textarea keeps the text → nothing partially stored → user exit: retry, or copy the text out",
+        "prediction save fails → silently degraded: the module proceeds and no comparison is shown later → nothing blocks entry (F10 AC: never a blocking form) → user exit: none needed",
+        "calibration cannot be computed (no prediction, no self-assessments) → nothing renders; there is no empty card → n/a → user exit: none needed",
+        "a reflection exists but its module was deleted → the reflection remains on the topic and is shown there → never orphaned into invisibility → user exit: delete it from the topic page"
+      ],
+      "stateLifecycle": [],
+      "egress": [
+        "data classes held: `pii` (reflections and predictions are the learner's own words)",
+        "log sink ← `internal` only: ids and whether a prediction was skipped. **Reflection and prediction text are never logged** ← `scrub()` ← on",
+        "`claude` CLI subprocess ← `pii` ← indirect only: C7 quotes a reflection into a review prompt, dispatched via C2 ← on"
+      ],
+      "trustBoundaries": [
+        "inbound: save/edit calls ← the local browser via C9 ← bearer token ← single-user"
+      ],
+      "sinks": [
+        "none. Reflection text is stored parameterised and rendered as sanitized Markdown with HTML disabled."
+      ],
+      "longRunningWork": [],
+      "concurrencyModel": "async event loop",
+      "offloaded": "none",
+      "plannedFiles": [
+        "src/reflect/prediction.ts",
+        "src/reflect/calibration.ts",
+        "src/reflect/journal.ts"
+      ],
+      "plannedTests": [
+        "tests/reflect/prediction.test.ts",
+        "tests/reflect/calibration.test.ts",
+        "tests/reflect/journal.test.ts",
+        "tests/reflect/verbatim.test.ts",
+        "tests/optimistic/reflection-save.test.ts",
+        "tests/perf/prediction-render.perf.ts",
+        "e2e/f10-calibration.spec.ts",
+        "e2e/f11-reflection.spec.ts"
+      ],
+      "lastBuildStatus": null
+    },
+    "C9": {
+      "title": "HTTP API",
+      "hash": "d345ec080fad65f7",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "dependsOn": [
+        "C0",
+        "C1",
+        "C2",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C8",
+        "C11"
+      ],
+      "consumes": [],
+      "ownsShapes": [
+        "HealthView",
+        "SseEvent<T>",
+        "SseEvent"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a. There is **no** debug or test route: the fake CLI transport is selected inside C2 by an exact-value env comparison in a `IS_RELEASE`-excluded module, not by an HTTP endpoint.",
+      "failureModes": [
+        "missing or wrong bearer token → `401` with `{ code: \"unauthorized\" }` and no detail → the request never reaches a service → user exit: reload the page (the token is re-injected); if the token file is unreadable the startup screen says so",
+        "request body fails shape validation → `400` with a field-level message and no echo of the submitted value → nothing is written → user exit: correct the input; the form keeps what was typed",
+        "service throws an unexpected error → `500` with `{ code: \"internal\", correlationId }` → the full detail is logged under that id → user exit: retry; the correlation id is shown for the log",
+        "the store failed to open at boot → **every** route returns `503` with `store-corrupt`, and the UI renders the recovery screen instead of an empty dashboard (H3: never an empty state over an error) → user exit: the in-app \"use previous generation\" action, which is served by a route that does not require the broken store",
+        "SSE client disconnects → the stream's `AbortSignal` fires → the subscription is removed and no work is orphaned → user exit: n/a",
+        "boot fails before the error channel exists → the process writes the failure to stderr **and** to a `boot-error.txt` beside the data root, and the start script prints it (H13) → the process exits non-zero rather than serving a broken app → user exit: the printed message names the cause and the fix"
+      ],
+      "stateLifecycle": [
+        "location: `<dataRoot>/.session-token`, minted per launch",
+        "key custody: the token is the credential; it is written mode 0600, replaced on every launch, and never logged (only a digest)",
+        "durability: written before the server binds; a failed write is fatal at boot",
+        "file mode: 0600 on the temp file before rename",
+        "schema versioning: n/a",
+        "recovery: unreadable/absent at read time → mint a new one and log loudly; the page reload picks it up"
+      ],
+      "egress": [
+        "data classes held: `pii` in transit",
+        "HTTP responses on `127.0.0.1:31544` ← `pii`, `internal` ← per-launch bearer token + origin check ← on",
+        "log sink ← `internal`: method, route, status, duration, correlation id. **Never a request body** ← `scrub()` ← on"
+      ],
+      "trustBoundaries": [
+        "inbound: `http://127.0.0.1:31544/api/*` ← **any local process, and any page the learner has open in a browser** ← per-launch bearer token in `X-LA-Token`, plus an explicit `Origin` allowlist; unauthenticated requests are rejected before routing ← single-user, no roles",
+        "inbound: `GET /api/topics/:id/stream` (SSE) ← same reach ← same token, checked on connect **and** the connection is closed if the token rotates ← same",
+        "inbound: static assets ← same ← unauthenticated by necessity; they contain no learner data, and the token is injected into the HTML document only, which itself requires the token cookie set by the loopback launch handshake"
+      ],
+      "sinks": [
+        "fs-path at `/api/topics/:id` and `/api/modules/:id` ← `:id` from the URL ← validated against the `TopicId`/`ModuleId` pattern **in the route schema** before any service call; the resolved path is asserted contained by C0's `moduleDir()`",
+        "template at every rendered response ← service data ← JSON only; no HTML is templated server-side from learner or model text",
+        "url: none — the server never fetches an outbound URL"
+      ],
+      "longRunningWork": [
+        "SSE stream | max: the lifetime of a generation (≤60 min) | timeout: closed when the job finishes or the client disconnects; a 30s heartbeat comment distinguishes stalled from idle | cancellable: yes, via the request's `AbortSignal` | owner: the HTTP request | on owner exit: unsubscribe | progress: the heartbeat plus `lastTickAt`",
+        "`POST /api/eval/:sessionId/send` | max 20s | timeout 120s (C2's) | cancellable: yes | owner: request | on owner exit: cancel the child | progress: streamed"
+      ],
+      "concurrencyModel": "async event loop",
+      "offloaded": "nothing new — every handler awaits a service; the store's synchronous statements are bounded < 5ms at declared scale, asserted by the loop-blocking test on each route",
+      "plannedFiles": [
+        "src/api/auth.ts",
+        "src/api/respond.ts",
+        "src/api/validate.ts",
+        "src/api/source.ts",
+        "app/api/source/route.ts",
+        "app/api/topics/route.ts",
+        "app/api/topics/[id]/route.ts",
+        "app/api/topics/[id]/stream/route.ts",
+        "app/api/topics/[id]/generate/route.ts",
+        "app/api/topics/[id]/detour/route.ts",
+        "app/api/modules/[id]/route.ts",
+        "app/api/eval/route.ts",
+        "app/api/eval/[sessionId]/send/route.ts",
+        "app/api/capstone/[topicId]/submit/route.ts",
+        "app/api/reviews/route.ts",
+        "app/api/practice/route.ts",
+        "app/api/reflections/route.ts",
+        "app/api/predictions/route.ts",
+        "app/api/provider/route.ts",
+        "app/api/health/route.ts"
+      ],
+      "plannedTests": [
+        "tests/api/auth.test.ts",
+        "tests/api/validate.test.ts",
+        "tests/api/errors.test.ts",
+        "tests/api/health.test.ts",
+        "tests/api/store-down.test.ts",
+        "tests/sinks/route-ids.test.ts",
+        "tests/harness/safety.test.ts",
+        "tests/perf/api-loop.perf.ts"
+      ],
+      "lastBuildStatus": null
+    },
+    "C10": {
+      "title": "Web UI",
+      "hash": "7430e4dc24b213df",
+      "implements": [
+        "F1",
+        "F3",
+        "F4",
+        "F5",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12",
+        "F13"
+      ],
+      "dependsOn": [
+        "C0",
+        "C9"
+      ],
+      "consumes": [
+        "DashboardView",
+        "ModuleAvailability",
+        "EntryDecision",
+        "ModuleGraph",
+        "ModuleNode",
+        "ModuleContent",
+        "Explanation",
+        "LessonBlock",
+        "Visualization",
+        "WarmUp",
+        "Topic",
+        "TopicNote",
+        "TopicStatus",
+        "EvalSession",
+        "EvalTurn",
+        "EvalVerdict",
+        "SelfAssessment",
+        "ReviewItem",
+        "PracticeSession",
+        "PracticeQuestion",
+        "Prediction",
+        "Calibration",
+        "Reflection",
+        "Capstone",
+        "CapstoneSubmission",
+        "GenerationProgress",
+        "AppError",
+        "ApiOk",
+        "ApiErr",
+        "DegradedTopic",
+        "CalibrationView",
+        "EvalTurnResult",
+        "LearnerMessage",
+        "EvalTarget",
+        "HealthView"
+      ],
+      "ownsShapes": [
+        "AppStoreState",
+        "PendingOp",
+        "LoadState<T>",
+        "LoadState"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a. There is no debug panel and no dev-only route; the Playwright test hooks are `data-testid` attributes only, which carry no behavior.",
+      "failureModes": [
+        "a fetch fails → the affected section renders `LoadState.error` with a Retry, never the empty state → nothing is lost; optimistic state rolls back → user exit: Retry in place",
+        "an optimistic op fails → the local change reverts and an inline error names what failed → the control stays enabled throughout → user exit: repeat the action",
+        "the store is down (503) → the app routes to `/recover`, which explains the failure, names the file, and offers \"use the previous generation\" → the dashboard is never shown empty over a failure → user exit: the recovery button",
+        "the Claude CLI is unavailable → a persistent banner with the install instruction; an AI-triggering button reports the same in place instead of failing silently → nothing dispatched → user exit: install, then Retry",
+        "a module renders degraded content → a \"This module could not be read\" card with Retry authoring and Delete → never a blank page → user exit: either button",
+        "the SSE stream drops → the progress panel says \"Reconnecting…\" and reconnects with backoff; after 3 failures it falls back to polling → progress is never silently frozen → user exit: reload"
+      ],
+      "stateLifecycle": [],
+      "egress": [
+        "data classes held: `pii` in the browser's memory",
+        "outbound video link (learner click) ← `public` (URL only) ← the learner's click; `rel=\"noopener noreferrer\"`, `Referrer-Policy: no-referrer` ← on",
+        "HTTP to `127.0.0.1:31544` ← `pii`, `internal` ← the bearer token ← on",
+        "no analytics, no telemetry, no third-party script, no remote font: enforced by the CSP in C9 and asserted by a test"
+      ],
+      "trustBoundaries": [
+        "inbound: **model-authored Markdown and SVG** ← rendered into the learner's browser ← sanitized: Markdown with raw HTML disabled; SVG passed through an allowlist sanitizer (no `<script>`, no `<foreignObject>`, no event attributes, no external references); video URLs re-checked against the host allowlist at render time as well as at ingest",
+        "inbound: `sessionStorage` drafts ← the same origin ← treated as untrusted text, never parsed as code"
+      ],
+      "sinks": [
+        "template at every Markdown/SVG render ← model output ← sanitizer allowlist, CSP without `unsafe-inline`",
+        "url at every rendered link ← `Explanation.url` ← `https:` + host allowlist, re-validated at render (defence in depth; C4 validates at ingest)",
+        "dynamic-import: none — no code path imports a module by a runtime-computed name"
+      ],
+      "longRunningWork": [
+        "SSE subscription | max: the generation's lifetime | timeout: 30s heartbeat, reconnect with backoff, fall back to polling after 3 failures | cancellable: yes, on unmount | owner: the page component | on owner exit: unsubscribe | progress: `modulesDone` plus `lastTickAt`, so stalled reads differently from slow",
+        "a streaming evaluator reply | max 20s | timeout 120s | cancellable: yes, on navigate-away | owner: the chat component | on owner exit: abort the fetch | progress: token stream"
+      ],
+      "concurrencyModel": "UI thread (React)",
+      "offloaded": "Markdown and SVG sanitization of a large explanation runs in the main thread but is memoized per module content digest — the render path never re-parses; graph layout is computed once per graph and memoized, with the comparator hoisted (H11, `scale: modules per topic=12`, dashboard `scale: topics=50`)",
+      "plannedFiles": [
+        "app/layout.tsx,",
+        "app/topics/new/page.tsx,",
+        "app/modules/[id]/page.tsx,",
+        "app/review/page.tsx,",
+        "app/settings/page.tsx,",
+        "src/ui/store.ts,",
+        "src/ui/components/GraphView.tsx,",
+        "src/ui/sanitize.ts,"
+      ],
+      "plannedTests": [
+        "tests/ui/warmup-gate.test.ts",
+        "tests/ui/advisory.test.ts",
+        "tests/ui/graph-choice.test.ts",
+        "tests/ui/visualization.test.ts",
+        "tests/ui/lesson-blocks.test.ts",
+        "tests/ui/load-state.test.ts",
+        "tests/ui/no-grades.test.ts",
+        "tests/ui/jargon.test.ts",
+        "tests/ui/source-material.test.ts",
+        "tests/ui/sanitize.test.ts",
+        "tests/optimistic/ui-ops.test.ts",
+        "tests/perf/module-render.perf.ts",
+        "e2e/f1-intake.spec.ts"
+      ],
+      "lastBuildStatus": null
+    },
+    "C11": {
+      "title": "Source material (extraction, storage, and the views F2 reads)",
+      "hash": "c38e7ef1b1d48c5b",
+      "implements": [
+        "F1",
+        "F2"
+      ],
+      "dependsOn": [
+        "C0",
+        "C1"
+      ],
+      "consumes": [
+        "SourceId",
+        "SourceKind",
+        "SourceUnit",
+        "SourceDocument",
+        "StagedSource",
+        "Level",
+        "TopicId"
+      ],
+      "ownsShapes": [
+        "ExtractionOutcome",
+        "SourceChunk",
+        "BoundedView",
+        "TopicMaterial",
+        "MaterialBrief"
+      ],
+      "subDoc": null,
+      "releaseSurface": "production",
+      "excludedFromReleaseBy": "n/a. `src/source/pdf.testing.ts` builds fixture PDFs for the tests and",
+      "failureModes": [
+        "file is not a format we read (a spreadsheet, an image, a `.doc`) → `validation` with the `unsupported` message, which names the paste box → nothing is staged and the form keeps everything else typed → user exit: paste the text, or export to a format we read",
+        "file is damaged, password-protected, or not the format its name claims → `unparseable`, with the cause logged and **not** returned → nothing staged → user exit: export it again, or paste the text",
+        "PDF has no text layer (a pure scan) → `no-text`, whose message says it is a scan and that we do not run OCR → nothing staged; **no topic is created from it** → user exit: the paste box, or a copy with selectable text",
+        "upload exceeds 25 MB → `too-large`, refused on the declared size **before** the body is read into memory → nothing read → user exit: upload the chapters needed, or paste",
+        "extracted text exceeds the 2,000,000-character cap → the text is kept to the cap and `truncated: true` travels with it all the way to the intake form and into every prompt → the course still generates, from the part that was kept → user exit: upload the chapters actually needed",
+        "a staged upload is claimed by no topic → swept after 24h by the next stage call → the learner's 25 MB does not sit forever in a directory no screen shows them → user exit: n/a",
+        "a staged id is gone at attach time (swept, or never written) → that document is skipped and logged; the topic keeps the material that survived → the topic already exists by then, and failing would leave the learner with a subject and no retry → user exit: the course runs on what attached, exactly as if less had been uploaded",
+        "the index names a document the disk does not have → `loadMaterial` drops it and logs; the course runs on the readable documents → a partial constraint beats refusing to generate → user exit: n/a",
+        "a source row will not parse → dropped and logged (C1) → the topic researches from subject and level, which is the no-material path → user exit: n/a"
+      ],
+      "stateLifecycle": [
+        "location: `<dataRoot>/topics/<topicId>/source/<sourceId>.txt` (extracted text) and `<sourceId>-<safe filename>` (the original upload); `<dataRoot>/staging/<sourceId>/` while an upload waits for a topic",
+        "key custody: n/a — no key, no secret",
+        "durability: temp → fsync → rename → fsync dir, the same protocol `content.json` is written with",
+        "file mode: 0600 on files, 0700 on directories, set on the temp file before the rename (no-op on Windows)",
+        "schema versioning: the on-disk text is plain UTF-8 and needs none; the index is `source_documents`, added by C1 migration **v4**",
+        "recovery: text unreadable → treated as a missing document (above), never as a corrupt topic | staged meta unparseable → the staged record reads as absent | the whole `source/` directory removed with the topic"
+      ],
+      "egress": [
+        "data classes held: `pii` — the material is the learner's own book and their own syllabus, and it is the largest piece of learner data the app holds",
+        "topic source directory (`<dataRoot>/topics/**/source/`) ← `pii` ← path confinement via C0's `sourceDir()`, asserted before a byte is written ← on",
+        "staging directory (`<dataRoot>/staging/`) ← `pii` ← `SourceId` pattern checked, join resolved, containment asserted; swept on a 24h TTL ← on",
+        "provider session (prompt body, via C2) ← `pii`: unit titles, key terms and bounded excerpts of the material — **never** the file, never the whole document ← the same gate as every other prompt: the learner's press on the named control ← on",
+        "log sink ← `internal` only: `sourceId` (a minted opaque id, exempt in `scrub()` exactly as `topicId` is), kind, counts. Filenames, unit titles and extracted text are **not** exempt and are hashed like every other piece of learner writing ← `scrub()` ← on",
+        "**no network destination of its own.** Extraction opens no socket on any path."
+      ],
+      "trustBoundaries": [
+        "inbound: the uploaded bytes ← the learner, through `POST /api/source` (C9) ← the format is decided by magic number before any reader runs, the size is refused on the declared length first and the real length second, and the parse runs with no filesystem or network access of its own ← the file is untrusted input to a parser, which is the sharpest edge in this feature",
+        "inbound: extracted text on its way into a prompt ← the learner's own document ← rendered into the prompt inside a fenced, explicitly-labelled untrusted-data block by C2's `materialBlock()`, so a syllabus that says \"ignore your instructions\" is quoted material and not an instruction"
+      ],
+      "sinks": [
+        "fs-path at `stagedDir()` ← `SourceId` from the request ← matched against `SOURCE_ID_RE` before the join, resolved, and asserted contained by the staging root",
+        "fs-path at `writeSourceDocument`/`readSourceText` ← `TopicId` + `SourceId` ← both matched against their patterns, resolved, and asserted contained by the topic's `source/` directory (H12: a shape guarantees structure, never a location)",
+        "fs-path at the kept original ← the learner's own filename ← `safeFilename()` strips a path, a drive letter and anything not plainly part of a name, so the join stays one segment",
+        "url: none"
+      ],
+      "longRunningWork": [
+        "reading one upload | max: bounded by the 25 MB cap | timeout: none of its own; the request's | cancellable: with the request | owner: the HTTP request | on owner exit: the parse is abandoned and nothing is staged | progress: the form says it is reading, on this computer",
+        "chunking a topic's material | max: bounded by the 2,000,000-character cap × 10 documents | done once per topic per process and memoized, because one authoring pass writes ten lessons that all want an excerpt from the same book"
+      ],
+      "concurrencyModel": "async for the PDF read (it awaits `pdfjs`), sync for everything else",
+      "offloaded": "none — `pdfjs`'s legacy build runs on the event loop; the 25 MB cap is what bounds it",
+      "plannedFiles": [],
+      "plannedTests": [],
+      "lastBuildStatus": null
+    }
+  },
+  "shapes": {
+    "ISODateString": {
+      "ownerComponent": "C0",
+      "definition": "branded `string`, `YYYY-MM-DDTHH:mm:ss.sssZ`",
+      "example": "`\"2026-08-22T09:14:03.000Z\"`",
+      "consumers": [
+        "C1",
+        "C2",
+        "C7",
+        "C8"
+      ]
+    },
+    "TopicId": {
+      "ownerComponent": "C0",
+      "definition": "branded `string`, pattern `^t_[A-Za-z0-9]{16}$`",
+      "example": "`\"t_9fQ2xK4mZa71bC0d\"`",
+      "consumers": [
+        "C1",
+        "C5",
+        "C6",
+        "C7",
+        "C8",
+        "C11"
+      ]
+    },
+    "ModuleId": {
+      "ownerComponent": "C0",
+      "definition": "branded `string`, pattern `^m_[A-Za-z0-9]{16}$`",
+      "example": "`\"m_71bC0d9fQ2xK4mZa\"`",
+      "consumers": [
+        "C1",
+        "C5",
+        "C6",
+        "C7",
+        "C8"
+      ]
+    },
+    "SessionId": {
+      "ownerComponent": "C0",
+      "definition": "branded `string`, pattern `^s_[A-Za-z0-9]{16}$`",
+      "example": "`\"s_4mZa71bC0d9fQ2xK\"`",
+      "consumers": [
+        "C1",
+        "C2",
+        "C6",
+        "C7"
+      ]
+    },
+    "Level": {
+      "ownerComponent": "C0",
+      "definition": "`\"beginner\" | \"intermediate\" | \"advanced\" | \"self-described\"`",
+      "example": "`\"intermediate\"`",
+      "consumers": [
+        "C2",
+        "C11"
+      ]
+    },
+    "TopicStatus": {
+      "ownerComponent": "C0",
+      "definition": "`\"queued\" | \"generating\" | \"ready\" | \"ready-with-notes\" | \"needs-attention\" | \"modules-complete\" | \"done\"`",
+      "example": "`\"ready\"`",
+      "consumers": [
+        "C5",
+        "C10"
+      ]
+    },
+    "ModuleState": {
+      "ownerComponent": "C0",
+      "definition": "`\"not-yet-recommended\" | \"available\" | \"in-progress\" | \"completed\" | \"assisted-pass\" | \"needs-review\"`",
+      "example": "`\"available\"`",
+      "consumers": [
+        "C1",
+        "C5"
+      ]
+    },
+    "Topic": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: TopicId, subject: string, level: Level, levelDetail?: string, purpose: string, drivingQuestion: string | null, status: TopicStatus, diagnostic: DiagnosticTranscript | null, notes: TopicNote[], createdAt: ISODateString, updatedAt: ISODateString }`",
+      "example": "`{ \"id\": \"t_9fQ2xK4mZa71bC0d\", \"subject\": \"Information theory\", \"level\": \"intermediate\", \"purpose\": \"read Shannon and build a compressor with an agent\", \"drivingQuestion\": \"How small can a message get, and how do you know when you are done?\", \"status\": \"ready\", \"diagnostic\": null, \"notes\": [], \"createdAt\": \"2026-08-22T09:14:03.000Z\", \"updatedAt\": \"2026-08-22T09:41:00.000Z\" }`",
+      "consumers": [
+        "C1",
+        "C4",
+        "C10"
+      ]
+    },
+    "TopicNote": {
+      "ownerComponent": "C0",
+      "definition": "`{ kind: \"discontinuity\" | \"graph-defect\" | \"cross-topic\" | \"generation-failure\", message: string, affectedModules: ModuleId[], createdAt: ISODateString }`",
+      "example": "`{ \"kind\": \"discontinuity\", \"message\": \"Module 4 uses 'entropy rate' before module 3 defines it.\", \"affectedModules\": [\"m_71bC0d9fQ2xK4mZa\"], \"createdAt\": \"2026-08-22T09:41:00.000Z\" }`",
+      "consumers": [
+        "C1",
+        "C4",
+        "C10"
+      ]
+    },
+    "DiagnosticTranscript": {
+      "ownerComponent": "C0",
+      "definition": "`{ skipped: boolean, exchanges: EvalTurn[], priorKnowledge: string[] }`",
+      "example": "`{ \"skipped\": true, \"exchanges\": [], \"priorKnowledge\": [] }`",
+      "consumers": []
+    },
+    "ModuleNode": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: ModuleId, topicId: TopicId, title: string, ordinal: number, kind: \"module\" | \"detour\" | \"remedial\" | \"capstone\", testOutEligible: boolean, estimatedMinutes: number, state: ModuleState, content: ModuleContent | null }`",
+      "example": "`{ \"id\": \"m_71bC0d9fQ2xK4mZa\", \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"title\": \"Entropy as expected surprise\", \"ordinal\": 3, \"kind\": \"module\", \"testOutEligible\": false, \"estimatedMinutes\": 20, \"state\": \"available\", \"content\": null }`",
+      "consumers": [
+        "C1",
+        "C4",
+        "C5",
+        "C10"
+      ]
+    },
+    "PrereqEdge": {
+      "ownerComponent": "C0",
+      "definition": "`{ from: ModuleId, to: ModuleId }` (understanding `to` depends on `from`)",
+      "example": "`{ \"from\": \"m_71bC0d9fQ2xK4mZa\", \"to\": \"m_0d9fQ2xK4mZa71bC0\" }`",
+      "consumers": [
+        "C1",
+        "C4",
+        "C5"
+      ]
+    },
+    "ModuleGraph": {
+      "ownerComponent": "C0",
+      "definition": "`{ topicId: TopicId, nodes: ModuleNode[], edges: PrereqEdge[], entryModules: ModuleId[] }`",
+      "example": "`{ \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"nodes\": [], \"edges\": [], \"entryModules\": [] }`",
+      "consumers": [
+        "C1",
+        "C4",
+        "C5",
+        "C10"
+      ]
+    },
+    "Explanation": {
+      "ownerComponent": "C0",
+      "definition": "`{ kind: \"video\", url: string, title: string, channel: string, durationSec: number, why: string } | { kind: \"text\", markdown: string }` — link **xor** text, never both (F2 AC)",
+      "example": "`{ \"kind\": \"video\", \"url\": \"https://www.youtube.com/watch?v=ErfnhcEV1O8\", \"title\": \"Information entropy\", \"channel\": \"3Blue1Brown\", \"durationSec\": 612, \"why\": \"Visual derivation at exactly this level.\" }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "Visualization": {
+      "ownerComponent": "C0",
+      "definition": "`{ kind: \"svg\", svg: string, caption: string } | { kind: \"table\", headers: string[], rows: string[][], caption: string } | { kind: \"none\" }`",
+      "example": "`{ \"kind\": \"none\" }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "LessonBlock": {
+      "ownerComponent": "C0",
+      "definition": "`{ kind: \"prose\", markdown: string } | { kind: \"figure\", svg: string, caption: string } | { kind: \"table\", headers: string[], rows: string[][], caption: string } | { kind: \"check\", question: string, options: string[], answerIndex: number, whyRight: string, whyWrong: string } | { kind: \"reveal\", prompt: string, answer: string } | { kind: \"steps\", title: string, steps: { label: string, markdown: string }[] }` — one piece of the interleaved lesson body (F3)",
+      "example": "`{ \"kind\": \"check\", \"question\": \"How many yes/no questions pin down one of $8$ equally likely outcomes?\", \"options\": [\"$8$\", \"$3$\", \"$4$\"], \"answerIndex\": 1, \"whyRight\": \"Each question halves the field, and $\\log_2 8 = 3$.\", \"whyWrong\": \"Counting the outcomes rather than the halvings gives $8$.\" }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "WarmUp": {
+      "ownerComponent": "C0",
+      "definition": "`{ prompt: string, expectedStruggle: string }`",
+      "example": "`{ \"prompt\": \"Before reading: how many yes/no questions pin down one of 8 equally likely outcomes? Why?\", \"expectedStruggle\": \"Answering 8 rather than 3.\" }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "ModuleContent": {
+      "ownerComponent": "C0",
+      "definition": "`{ learningGoals: string[], warmUp: WarmUp, explanation: Explanation, blocks?: LessonBlock[], visualization: Visualization, evalScript: EvalScript, authoredAt: ISODateString, authoredBySession: SessionId }`",
+      "example": "`{ \"learningGoals\": [\"State entropy as expected surprise\"], \"warmUp\": { \"prompt\": \"...\", \"expectedStruggle\": \"...\" }, \"explanation\": { \"kind\": \"text\", \"markdown\": \"...\" }, \"visualization\": { \"kind\": \"none\" }, \"evalScript\": { \"objectives\": [], \"seedQuestions\": [], \"angles\": [], \"misconceptions\": [], \"passCriteria\": [] }, \"authoredAt\": \"2026-08-22T09:30:00.000Z\", \"authoredBySession\": \"s_4mZa71bC0d9fQ2xK\" }`",
+      "consumers": [
+        "C4",
+        "C10"
+      ]
+    },
+    "EvalScript": {
+      "ownerComponent": "C0",
+      "definition": "`{ objectives: string[], seedQuestions: string[], angles: string[], misconceptions: TeachBackMisconception[], passCriteria: string[] }`",
+      "example": "`{ \"objectives\": [\"Distinguish entropy from information content\"], \"seedQuestions\": [\"Why is a fair coin one bit?\"], \"angles\": [\"compression\", \"gambling odds\", \"twenty questions\"], \"misconceptions\": [], \"passCriteria\": [\"Explains why entropy is an expectation, not a per-symbol constant\"] }`",
+      "consumers": [
+        "C6"
+      ]
+    },
+    "TeachBackMisconception": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: string, statement: string, correction: string }`",
+      "example": "`{ \"id\": \"tb1\", \"statement\": \"Entropy is just the length of the message.\", \"correction\": \"It is the expected code length under an optimal code.\" }`",
+      "consumers": [
+        "C6"
+      ]
+    },
+    "AssistLevel": {
+      "ownerComponent": "C0",
+      "definition": "`0 | 1 | 2 | 3` (0 unassisted, 3 heavy hints)",
+      "example": "`2`",
+      "consumers": [
+        "C6",
+        "C7",
+        "C8"
+      ]
+    },
+    "EvalTurn": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: string, role: \"learner\" | \"evaluator\", text: string, assistLevel: AssistLevel | null, angle: string | null, mode: \"question\" | \"hint\" | \"explanation\" | \"teach-back\" | \"verdict\", selfAssessment: SelfAssessment | null, at: ISODateString }`",
+      "example": "`{ \"id\": \"e7\", \"role\": \"evaluator\", \"text\": \"Suppose the outcomes are not equally likely...\", \"assistLevel\": null, \"angle\": \"gambling odds\", \"mode\": \"question\", \"selfAssessment\": null, \"at\": \"2026-08-22T10:02:00.000Z\" }`",
+      "consumers": [
+        "C1",
+        "C6",
+        "C10"
+      ]
+    },
+    "SelfAssessment": {
+      "ownerComponent": "C0",
+      "definition": "`{ confidence: 1 | 2 | 3 | 4 | 5, critique: string }`",
+      "example": "`{ \"confidence\": 3, \"critique\": \"I hand-waved the expectation step.\" }`",
+      "consumers": [
+        "C6",
+        "C8",
+        "C10"
+      ]
+    },
+    "EvalVerdict": {
+      "ownerComponent": "C0",
+      "definition": "`{ outcome: \"pass\" | \"assisted-pass\" | \"fail\" | \"continue\", assistLevel: AssistLevel, misunderstanding: string | null, nextAngle: string | null, remedialNeeded: boolean, rationale: string }`",
+      "example": "`{ \"outcome\": \"fail\", \"assistLevel\": 1, \"misunderstanding\": \"Treats entropy as a property of one symbol.\", \"nextAngle\": \"twenty questions\", \"remedialNeeded\": false, \"rationale\": \"The answer never invoked the distribution.\" }`",
+      "consumers": [
+        "C1",
+        "C6",
+        "C10"
+      ]
+    },
+    "EvalSession": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: SessionId, moduleId: ModuleId, kind: \"module\" | \"test-out\" | \"synthesis\" | \"capstone\" | \"review\" | \"diagnostic\", turns: EvalTurn[], consecutiveFailures: number, status: \"open\" | \"passed\" | \"abandoned\", openedAt: ISODateString }`",
+      "example": "`{ \"id\": \"s_4mZa71bC0d9fQ2xK\", \"moduleId\": \"m_71bC0d9fQ2xK4mZa\", \"kind\": \"module\", \"turns\": [], \"consecutiveFailures\": 0, \"status\": \"open\", \"openedAt\": \"2026-08-22T10:00:00.000Z\" }`",
+      "consumers": [
+        "C1",
+        "C6",
+        "C7",
+        "C10"
+      ]
+    },
+    "ReviewItem": {
+      "ownerComponent": "C0",
+      "definition": "`{ moduleId: ModuleId, dueAt: ISODateString, intervalDays: number, ease: number, lapses: number, lastAssistLevel: AssistLevel, flaggedNeedsReview: boolean }`",
+      "example": "`{ \"moduleId\": \"m_71bC0d9fQ2xK4mZa\", \"dueAt\": \"2026-08-25T00:00:00.000Z\", \"intervalDays\": 3, \"ease\": 2.5, \"lapses\": 0, \"lastAssistLevel\": 0, \"flaggedNeedsReview\": false }`",
+      "consumers": [
+        "C1",
+        "C7",
+        "C10"
+      ]
+    },
+    "PracticeSession": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: SessionId, questions: PracticeQuestion[], answeredCount: number, stoppedEarly: boolean }`",
+      "example": "`{ \"id\": \"s_0d9fQ2xK4mZa71bC\", \"questions\": [], \"answeredCount\": 0, \"stoppedEarly\": false }`",
+      "consumers": [
+        "C7",
+        "C10"
+      ]
+    },
+    "PracticeQuestion": {
+      "ownerComponent": "C0",
+      "definition": "`{ moduleId: ModuleId, topicId: TopicId, text: string, answered: boolean, correct: boolean | null }`",
+      "example": "`{ \"moduleId\": \"m_71bC0d9fQ2xK4mZa\", \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"text\": \"Why does a skewed coin carry less than one bit?\", \"answered\": false, \"correct\": null }`",
+      "consumers": [
+        "C7",
+        "C10"
+      ]
+    },
+    "Prediction": {
+      "ownerComponent": "C0",
+      "definition": "`{ moduleId: ModuleId, confidence: 1 | 2 | 3 | 4 | 5, expectation: string, skipped: boolean, at: ISODateString }`",
+      "example": "`{ \"moduleId\": \"m_71bC0d9fQ2xK4mZa\", \"confidence\": 4, \"expectation\": \"I probably know this from coding.\", \"skipped\": false, \"at\": \"2026-08-22T09:59:00.000Z\" }`",
+      "consumers": [
+        "C1",
+        "C8",
+        "C10"
+      ]
+    },
+    "Calibration": {
+      "ownerComponent": "C0",
+      "definition": "`{ moduleId: ModuleId, predicted: 1 | 2 | 3 | 4 | 5 | null, actualAssistLevel: AssistLevel, selfVsEvaluator: { turnId: string, self: 1 | 2 | 3 | 4 | 5, evaluatorAssist: AssistLevel }[] }`",
+      "example": "`{ \"moduleId\": \"m_71bC0d9fQ2xK4mZa\", \"predicted\": 4, \"actualAssistLevel\": 2, \"selfVsEvaluator\": [] }`",
+      "consumers": [
+        "C1",
+        "C8",
+        "C10"
+      ]
+    },
+    "Reflection": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: string, topicId: TopicId, moduleId: ModuleId | null, text: string, createdAt: ISODateString, updatedAt: ISODateString }`",
+      "example": "`{ \"id\": \"r_1\", \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"moduleId\": null, \"text\": \"The expectation step is the part I keep skipping.\", \"createdAt\": \"2026-08-22T10:20:00.000Z\", \"updatedAt\": \"2026-08-22T10:20:00.000Z\" }`",
+      "consumers": [
+        "C1",
+        "C7",
+        "C8",
+        "C10"
+      ]
+    },
+    "Capstone": {
+      "ownerComponent": "C0",
+      "definition": "`{ topicId: TopicId, moduleId: ModuleId, spec: string, drivingQuestionRef: string, purposeRef: string, submissions: CapstoneSubmission[], status: \"not-started\" | \"in-review\" | \"passed\" }`",
+      "example": "`{ \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"moduleId\": \"m_cap0d9fQ2xK4mZa7\", \"spec\": \"Build a Huffman coder and justify each design choice.\", \"drivingQuestionRef\": \"How small can a message get...\", \"purposeRef\": \"build a compressor with an agent\", \"submissions\": [], \"status\": \"not-started\" }`",
+      "consumers": [
+        "C1",
+        "C6",
+        "C10"
+      ]
+    },
+    "CapstoneSubmission": {
+      "ownerComponent": "C0",
+      "definition": "`{ round: number, artifact: string, feedback: string | null, verdict: EvalVerdict | null, at: ISODateString }`",
+      "example": "`{ \"round\": 1, \"artifact\": \"design notes plus a repo link\", \"feedback\": null, \"verdict\": null, \"at\": \"2026-08-22T11:00:00.000Z\" }`",
+      "consumers": [
+        "C6",
+        "C10"
+      ]
+    },
+    "Job": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: string, kind: JobKind, topicId: TopicId, moduleId: ModuleId | null, status: JobStatus, attempts: number, startedAt: ISODateString | null, finishedAt: ISODateString | null, error: AppError | null }`",
+      "example": "`{ \"id\": \"j_1\", \"kind\": \"author-module\", \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"moduleId\": \"m_71bC0d9fQ2xK4mZa\", \"status\": \"running\", \"attempts\": 1, \"startedAt\": \"2026-08-22T09:20:00.000Z\", \"finishedAt\": null, \"error\": null }`",
+      "consumers": [
+        "C1",
+        "C4"
+      ]
+    },
+    "JobKind": {
+      "ownerComponent": "C0",
+      "definition": "`\"generate-topic\" | \"author-module\" | \"capstone-spec\" | \"discontinuity-review\" | \"detour\" | \"review-question\"`",
+      "example": "`\"author-module\"`",
+      "consumers": [
+        "C4"
+      ]
+    },
+    "JobStatus": {
+      "ownerComponent": "C0",
+      "definition": "`\"queued\" | \"running\" | \"succeeded\" | \"failed\" | \"cancelled\"`",
+      "example": "`\"running\"`",
+      "consumers": [
+        "C1",
+        "C4"
+      ]
+    },
+    "GenerationProgress": {
+      "ownerComponent": "C0",
+      "definition": "`{ topicId: TopicId, phase: \"research\" | \"authoring\" | \"capstone\" | \"review\" | \"done\", modulesTotal: number, modulesDone: number, currentModule: string | null, lastTickAt: ISODateString }`",
+      "example": "`{ \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"phase\": \"authoring\", \"modulesTotal\": 10, \"modulesDone\": 4, \"currentModule\": \"Entropy as expected surprise\", \"lastTickAt\": \"2026-08-22T09:31:12.000Z\" }`",
+      "consumers": [
+        "C4",
+        "C10"
+      ]
+    },
+    "CliSessionSpec": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: SessionId, kind: JobKind | \"evaluate\", moduleDir: string, prompt: string, allowedTools: string[], timeoutMs: number, maxTurns: number }`",
+      "example": "`{ \"id\": \"s_4mZa71bC0d9fQ2xK\", \"kind\": \"author-module\", \"moduleDir\": \"<dataRoot>/topics/t_9fQ2xK4mZa71bC0d/modules/m_71bC0d9fQ2xK4mZa\", \"prompt\": \"...\", \"allowedTools\": [\"Read\", \"Write\", \"Edit\"], \"timeoutMs\": 600000, \"maxTurns\": 40 }`",
+      "consumers": [
+        "C2",
+        "C4",
+        "C6"
+      ]
+    },
+    "CliSessionResult": {
+      "ownerComponent": "C0",
+      "definition": "`{ ok: true, id: SessionId, output: unknown, durationMs: number, filesWritten: string[] } | { ok: false, id: SessionId, code: \"timeout\" | \"nonzero-exit\" | \"sandbox-violation\" | \"context-exhausted\" | \"cancelled\" | \"cli-missing\", message: string, correlationId: string, durationMs: number }`",
+      "example": "`{ \"ok\": false, \"id\": \"s_4mZa71bC0d9fQ2xK\", \"code\": \"timeout\", \"message\": \"Module authoring session exceeded 600s.\", \"correlationId\": \"c_18ab\", \"durationMs\": 600001 }`",
+      "consumers": [
+        "C2",
+        "C4",
+        "C6"
+      ]
+    },
+    "ErrorCode": {
+      "ownerComponent": "C0",
+      "definition": "`\"validation\" | \"not-found\" | \"conflict\" | \"unauthorized\" | \"store-corrupt\" | \"store-key-missing\" | \"store-schema-ahead\" | \"cli-missing\" | \"cli-failed\" | \"sandbox-violation\" | \"timeout\" | \"cancelled\" | \"internal\"`",
+      "example": "`\"not-found\"`",
+      "consumers": []
+    },
+    "AppError": {
+      "ownerComponent": "C0",
+      "definition": "`{ code: ErrorCode, message: string, correlationId: string }` — never carries a stack, a filesystem path, or the offending input (H12)",
+      "example": "`{ \"code\": \"validation\", \"message\": \"Subject is required.\", \"correlationId\": \"c_18ab\" }`",
+      "consumers": [
+        "C1",
+        "C2",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C8",
+        "C10"
+      ]
+    },
+    "ApiOk<T>": {
+      "ownerComponent": "C0",
+      "definition": "`{ ok: true, data: T }`",
+      "example": "`{ \"ok\": false, \"error\": { \"code\": \"validation\", \"message\": \"Subject is required.\", \"correlationId\": \"c_18ab\" } }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "ApiOk": {
+      "ownerComponent": "C0",
+      "definition": "`{ ok: true, data: T }`",
+      "example": "`{ \"ok\": false, \"error\": { \"code\": \"validation\", \"message\": \"Subject is required.\", \"correlationId\": \"c_18ab\" } }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "ApiErr": {
+      "ownerComponent": "C0",
+      "definition": "`{ ok: false, error: AppError }`",
+      "example": "`{ \"ok\": false, \"error\": { \"code\": \"validation\", \"message\": \"Subject is required.\", \"correlationId\": \"c_18ab\" } }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "AppConfig": {
+      "ownerComponent": "C0",
+      "definition": "`{ dataRoot: string, port: number, provider: ProviderKind, ollama: {...}, llama: {...}, sessionConcurrency: number, claudeBin: string, claudeModel: string, chatModels: ChatModels, configWarnings: string[] }`",
+      "example": "`{ \"dataRoot\": \"./data\", \"port\": 31544, \"provider\": \"claude\", \"sessionConcurrency\": 2, \"claudeBin\": \"claude\", \"claudeModel\": \"\", \"configWarnings\": [] }`",
+      "consumers": []
+    },
+    "AppPaths": {
+      "ownerComponent": "C0",
+      "definition": "`{ dataRoot: string, dbFile: string, dbPrev: string, logsDir: string, topicsDir: string, moduleDir: (t: TopicId, m: ModuleId) => string, scrubSalt: string }`",
+      "example": "`{ \"dataRoot\": \"/home/u/.local/share/learn-assistant\", \"dbFile\": \".../learn.db\", \"dbPrev\": \".../learn.db.prev\", \"logsDir\": \".../logs\", \"topicsDir\": \".../topics\", \"scrubSalt\": \".../.scrub-salt\" }`",
+      "consumers": [
+        "C1",
+        "C2"
+      ]
+    },
+    "SourceId": {
+      "ownerComponent": "C0",
+      "definition": "branded `string`, pattern `^sd_[A-Za-z0-9]{16}$`",
+      "example": "`\"sd_71bC0d9fQ2xK4mZa\"`",
+      "consumers": [
+        "C11"
+      ]
+    },
+    "SourceKind": {
+      "ownerComponent": "C0",
+      "definition": "`\"pdf\" | \"docx\" | \"text\" | \"markdown\" | \"pasted\"`",
+      "example": "`\"pdf\"`",
+      "consumers": [
+        "C11"
+      ]
+    },
+    "SourceUnit": {
+      "ownerComponent": "C0",
+      "definition": "`{ label: string, title: string }` — one unit/week/chapter the material names for itself; the scope F2 is held to",
+      "example": "`{ \"label\": \"Unit 3\", \"title\": \"Entropy and mutual information\" }`",
+      "consumers": [
+        "C11"
+      ]
+    },
+    "SourceDocument": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: SourceId, topicId: TopicId, filename: string, kind: SourceKind, byteSize: number, charCount: number, pageCount: number | null, truncated: boolean, units: SourceUnit[], addedAt: ISODateString }`",
+      "example": "`{ \"id\": \"sd_71bC0d9fQ2xK4mZa\", \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"filename\": \"info-theory-syllabus.pdf\", \"kind\": \"pdf\", \"byteSize\": 48213, \"charCount\": 6120, \"pageCount\": 3, \"truncated\": false, \"units\": [{ \"label\": \"Unit 3\", \"title\": \"Entropy and mutual information\" }], \"addedAt\": \"2026-08-22T09:14:03.000Z\" }`",
+      "consumers": [
+        "C11"
+      ]
+    },
+    "StagedSource": {
+      "ownerComponent": "C0",
+      "definition": "`{ id: SourceId, filename: string, kind: SourceKind, byteSize: number, charCount: number, pageCount: number | null, truncated: boolean, units: SourceUnit[], inferredSubject: string | null, levelSignal: Level | null, excerpt: string }` — an upload that has been read but does not belong to a subject yet",
+      "example": "`{ \"id\": \"sd_71bC0d9fQ2xK4mZa\", \"filename\": \"info-theory-syllabus.pdf\", \"kind\": \"pdf\", \"byteSize\": 48213, \"charCount\": 6120, \"pageCount\": 3, \"truncated\": false, \"units\": [{ \"label\": \"Unit 3\", \"title\": \"Entropy and mutual information\" }], \"inferredSubject\": \"Information theory\", \"levelSignal\": \"advanced\", \"excerpt\": \"Unit 1: Probability review ...\" }`",
+      "consumers": [
+        "C11"
+      ]
+    },
+    "NewTopic": {
+      "ownerComponent": "C1",
+      "definition": "`{ subject: string, level: Level, levelDetail?: string, purpose: string, diagnostic: DiagnosticTranscript | null }`",
+      "example": "`{ \"subject\": \"Information theory\", \"level\": \"intermediate\", \"purpose\": \"read Shannon\", \"diagnostic\": null }`",
+      "consumers": [
+        "C4"
+      ]
+    },
+    "DegradedTopic": {
+      "ownerComponent": "C1",
+      "definition": "`{ degraded: true, id: TopicId, reason: string, rawPreview: string }` — what the UI renders for a row it cannot parse, with a delete affordance (H13)",
+      "example": "`{ \"degraded\": true, \"id\": \"t_9fQ2xK4mZa71bC0d\", \"reason\": \"modules JSON failed to parse\", \"rawPreview\": \"{\\\"nodes\\\":[{\\\"id\\\"...\" }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "StoreHealth": {
+      "ownerComponent": "C1",
+      "definition": "`{ schemaVersion: number, highestKnownMigration: number, prevGenerationPresent: boolean, degradedTopicCount: number }`",
+      "example": "`{ \"schemaVersion\": 4, \"highestKnownMigration\": 4, \"prevGenerationPresent\": true, \"degradedTopicCount\": 0 }`",
+      "consumers": []
+    },
+    "ModuleBrief": {
+      "ownerComponent": "C2",
+      "definition": "`{ topicSubject: string, level: Level, levelDetail: string | null, purpose: string, drivingQuestion: string, moduleTitle: string, moduleObjectives: string[], prerequisiteSummaries: { title: string, oneLine: string }[], downstreamSummaries: { title: string, oneLine: string }[], priorKnowledge: string[], targetMinutes: number }`",
+      "example": "`{ \"topicSubject\": \"Information theory\", \"level\": \"intermediate\", \"levelDetail\": null, \"purpose\": \"build a compressor\", \"drivingQuestion\": \"How small can a message get?\", \"moduleTitle\": \"Entropy as expected surprise\", \"moduleObjectives\": [\"Define entropy\"], \"prerequisiteSummaries\": [{ \"title\": \"Probability refresher\", \"oneLine\": \"Distributions and expectation.\" }], \"downstreamSummaries\": [], \"priorKnowledge\": [\"basic probability\"], \"targetMinutes\": 20 }`",
+      "consumers": [
+        "C4",
+        "C6"
+      ]
+    },
+    "CliAvailability": {
+      "ownerComponent": "C2",
+      "definition": "`{ available: true, version: string } | { available: false, reason: \"not-found\" | \"not-executable\" | \"probe-failed\", hint: string }`",
+      "example": "`{ \"available\": false, \"reason\": \"not-found\", \"hint\": \"Install the Claude CLI and ensure `claude` is on PATH, or set LA_CLAUDE_BIN.\" }`",
+      "consumers": []
+    },
+    "SandboxSnapshot": {
+      "ownerComponent": "C2",
+      "definition": "`{ files: { relPath: string, size: number, digest: string }[], takenAt: ISODateString }`",
+      "example": "`{ \"files\": [{ \"relPath\": \"content.json\", \"size\": 1421, \"digest\": \"b1946ac9…\" }], \"takenAt\": \"2026-08-22T09:20:00.000Z\" }`",
+      "consumers": []
+    },
+    "GenerationPlan": {
+      "ownerComponent": "C4",
+      "definition": "`{ estimatedModules: number, sessionCount: number, phases: (\"research\" | \"authoring\" | \"capstone\" | \"review\")[] }`",
+      "example": "`{ \"estimatedModules\": 10, \"sessionCount\": 13, \"phases\": [\"research\", \"authoring\", \"capstone\", \"review\"] }`",
+      "consumers": []
+    },
+    "DetourRequest": {
+      "ownerComponent": "C4",
+      "definition": "`{ topicId: TopicId, anchorModuleId: ModuleId, question: string }`",
+      "example": "`{ \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"anchorModuleId\": \"m_71bC0d9fQ2xK4mZa\", \"question\": \"How does this relate to Kolmogorov complexity?\" }`",
+      "consumers": []
+    },
+    "GraphValidation": {
+      "ownerComponent": "C4",
+      "definition": "`{ acyclic: boolean, entryModules: ModuleId[], unreachable: ModuleId[], issues: TopicNote[] }`",
+      "example": "`{ \"acyclic\": true, \"entryModules\": [\"m_71bC0d9fQ2xK4mZa\"], \"unreachable\": [], \"issues\": [] }`",
+      "consumers": []
+    },
+    "ModuleAvailability": {
+      "ownerComponent": "C5",
+      "definition": "`{ moduleId: ModuleId, state: ModuleState, unmetPrereqs: ModuleId[] }`",
+      "example": "`{ \"moduleId\": \"m_71bC0d9fQ2xK4mZa\", \"state\": \"available\", \"unmetPrereqs\": [] }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "EntryDecision": {
+      "ownerComponent": "C5",
+      "definition": "`{ enterable: true, advisory: { unmetPrereqs: { id: ModuleId, title: string }[] } | null }`",
+      "example": "`{ \"enterable\": true, \"advisory\": { \"unmetPrereqs\": [{ \"id\": \"m_0d9fQ2xK4mZa71bC0\", \"title\": \"Probability refresher\" }] } }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "InsertionCheck": {
+      "ownerComponent": "C5",
+      "definition": "`{ ok: true } | { ok: false, reason: \"would-create-cycle\" | \"prereq-of-existing\" | \"unknown-anchor\", detail: string }`",
+      "example": "`{ \"ok\": false, \"reason\": \"prereq-of-existing\", \"detail\": \"A detour may not become a prerequisite of module 3.\" }`",
+      "consumers": []
+    },
+    "DashboardView": {
+      "ownerComponent": "C5",
+      "definition": "`{ topics: { id: TopicId, subject: string, status: TopicStatus, completedCount: number, availableCount: number, remainingCount: number, capstone: \"not-started\" | \"in-review\" | \"passed\" | \"n/a\", needsReviewCount: number, assistedPassCount: number }[], reviewsDue: number, synthesisAvailable: boolean }`",
+      "example": "`{ \"topics\": [{ \"id\": \"t_9fQ2xK4mZa71bC0d\", \"subject\": \"Information theory\", \"status\": \"ready\", \"completedCount\": 3, \"availableCount\": 2, \"remainingCount\": 7, \"capstone\": \"not-started\", \"needsReviewCount\": 0, \"assistedPassCount\": 1 }], \"reviewsDue\": 4, \"synthesisAvailable\": false }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "EvalTarget": {
+      "ownerComponent": "C6",
+      "definition": "`{ kind: \"module\" | \"test-out\" | \"review\", moduleId: ModuleId } | { kind: \"synthesis\", topicA: TopicId, topicB: TopicId } | { kind: \"capstone\", topicId: TopicId }`",
+      "example": "`{ \"kind\": \"synthesis\", \"topicA\": \"t_9fQ2xK4mZa71bC0d\", \"topicB\": \"t_0d9fQ2xK4mZa71bC\" }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "LearnerMessage": {
+      "ownerComponent": "C6",
+      "definition": "`{ text: string, selfAssessment: SelfAssessment | null }`",
+      "example": "`{ \"text\": \"Entropy is the expected number of bits...\", \"selfAssessment\": { \"confidence\": 3, \"critique\": \"Shaky on the expectation step.\" } }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "EvalTurnResult": {
+      "ownerComponent": "C6",
+      "definition": "`{ session: EvalSession, evaluatorTurn: EvalTurn, verdict: EvalVerdict, completion: { moduleId: ModuleId, unlocked: ModuleId[] } | null, remedialQueued: boolean }`",
+      "example": "`{ \"session\": { \"id\": \"s_4mZa71bC0d9fQ2xK\", \"moduleId\": \"m_71bC0d9fQ2xK4mZa\", \"kind\": \"module\", \"turns\": [], \"consecutiveFailures\": 0, \"status\": \"open\", \"openedAt\": \"2026-08-22T10:00:00.000Z\" }, \"evaluatorTurn\": { \"id\": \"e8\", \"role\": \"evaluator\", \"text\": \"Good — now suppose...\", \"assistLevel\": 0, \"angle\": \"compression\", \"mode\": \"question\", \"selfAssessment\": null, \"at\": \"2026-08-22T10:03:00.000Z\" }, \"verdict\": { \"outcome\": \"continue\", \"assistLevel\": 0, \"misunderstanding\": null, \"nextAngle\": null, \"remedialNeeded\": false, \"rationale\": \"Partial answer; probing further.\" }, \"completion\": null, \"remedialQueued\": false }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "AngleLedger": {
+      "ownerComponent": "C6",
+      "definition": "`{ used: string[], available: string[] }` — the re-ask non-repetition record",
+      "example": "`{ \"used\": [\"compression\"], \"available\": [\"gambling odds\", \"twenty questions\"] }`",
+      "consumers": []
+    },
+    "ScheduleParams": {
+      "ownerComponent": "C7",
+      "definition": "`{ requestRetention: number, maxIntervalDays: number, minIntervalDays: number }` — the first intervals are no longer configured here; they fall out of the memory model.",
+      "example": "`{ \"requestRetention\": 0.9, \"maxIntervalDays\": 180, \"minIntervalDays\": 1 }`",
+      "consumers": []
+    },
+    "ReviewMemory": {
+      "ownerComponent": "C7",
+      "definition": "`{ stability: number, difficulty: number, reps: number, lastReviewedAt: ISODateString | null }` — internal; never leaves the process.",
+      "example": "`{ \"stability\": 2.3065, \"difficulty\": 2.1181, \"reps\": 1, \"lastReviewedAt\": \"2026-08-25T00:00:00.000Z\" }`",
+      "consumers": []
+    },
+    "ReviewCue": {
+      "ownerComponent": "C7",
+      "definition": "`{ moduleId: ModuleId, dueAt: ISODateString, needsAnotherLook: boolean }` — what C9 returns in place of `ReviewItem`.",
+      "example": "`{ \"moduleId\": \"m_9fQ2xK4mZa71bC0d\", \"dueAt\": \"2026-08-25T00:00:00.000Z\", \"needsAnotherLook\": false }`",
+      "consumers": []
+    },
+    "MixPlan": {
+      "ownerComponent": "C7",
+      "definition": "`{ perTopic: { topicId: TopicId, count: number }[], total: number, fellBackToSingleTopic: boolean }`",
+      "example": "`{ \"perTopic\": [{ \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"count\": 4 }, { \"topicId\": \"t_0d9fQ2xK4mZa71bC\", \"count\": 4 }], \"total\": 8, \"fellBackToSingleTopic\": false }`",
+      "consumers": []
+    },
+    "NewReflection": {
+      "ownerComponent": "C8",
+      "definition": "`{ topicId: TopicId, moduleId: ModuleId | null, text: string }`",
+      "example": "`{ \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"moduleId\": null, \"text\": \"The expectation step is the part I keep skipping.\" }`",
+      "consumers": []
+    },
+    "CalibrationView": {
+      "ownerComponent": "C8",
+      "definition": "`{ moduleId: ModuleId, predictedLabel: string | null, actualLabel: string, selfVsEvaluator: { turnLabel: string, selfLabel: string, evaluatorLabel: string }[], note: string }` — every field is a **word**, never a number or a grade (F5/F10 framing)",
+      "example": "`{ \"moduleId\": \"m_71bC0d9fQ2xK4mZa\", \"predictedLabel\": \"fairly confident\", \"actualLabel\": \"needed a couple of hints\", \"selfVsEvaluator\": [], \"note\": \"Worth noticing where the two differed.\" }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "HealthView": {
+      "ownerComponent": "C9",
+      "definition": "`{ appVersion: string, schemaVersion: number, cli: CliAvailability, provider: ProviderKind, providerModel: string | null, degradedTopicCount: number, configWarnings: string[], dataRootDigest: string }` — `dataRootDigest` is a salted digest of the path, never the path itself",
+      "example": "`{ \"appVersion\": \"0.1.0\", \"schemaVersion\": 4, \"cli\": { \"available\": true, \"version\": \"1.2.3\" }, \"provider\": \"claude\", \"providerModel\": null, \"degradedTopicCount\": 0, \"configWarnings\": [], \"dataRootDigest\": \"9f2c…\" }`",
+      "consumers": [
+        "C10"
+      ]
+    },
+    "SseEvent<T>": {
+      "ownerComponent": "C9",
+      "definition": "`{ event: \"progress\" | \"error\" | \"done\", data: T }`",
+      "example": "`{ \"event\": \"progress\", \"data\": { \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"phase\": \"authoring\", \"modulesTotal\": 10, \"modulesDone\": 4, \"currentModule\": \"Entropy\", \"lastTickAt\": \"2026-08-22T09:31:12.000Z\" } }`",
+      "consumers": []
+    },
+    "SseEvent": {
+      "ownerComponent": "C9",
+      "definition": "`{ event: \"progress\" | \"error\" | \"done\", data: T }`",
+      "example": "`{ \"event\": \"progress\", \"data\": { \"topicId\": \"t_9fQ2xK4mZa71bC0d\", \"phase\": \"authoring\", \"modulesTotal\": 10, \"modulesDone\": 4, \"currentModule\": \"Entropy\", \"lastTickAt\": \"2026-08-22T09:31:12.000Z\" } }`",
+      "consumers": []
+    },
+    "AppStoreState": {
+      "ownerComponent": "C10",
+      "definition": "`{ dashboard: DashboardView | null, topic: { graph: ModuleGraph, availability: ModuleAvailability[] } | null, evalSession: EvalSession | null, pending: PendingOp[] }`",
+      "example": "`{ \"dashboard\": null, \"topic\": null, \"evalSession\": null, \"pending\": [] }`",
+      "consumers": []
+    },
+    "PendingOp": {
+      "ownerComponent": "C10",
+      "definition": "`{ id: string, kind: \"send-message\" | \"complete-module\" | \"save-reflection\" | \"record-prediction\" | \"answer-practice\" | \"record-review\", optimisticAppliedAt: number, rollback: () => void }`",
+      "example": "`{ \"id\": \"op_1\", \"kind\": \"send-message\", \"optimisticAppliedAt\": 1755855000000, \"rollback\": \"() => void\" }`",
+      "consumers": []
+    },
+    "LoadState<T>": {
+      "ownerComponent": "C10",
+      "definition": "`{ status: \"loading\" } | { status: \"empty\" } | { status: \"error\", error: AppError } | { status: \"ready\", data: T }` — the type that makes \"empty over an error\" unrepresentable (H3)",
+      "example": "`{ \"status\": \"error\", \"error\": { \"code\": \"store-corrupt\", \"message\": \"Your learning data could not be opened.\", \"correlationId\": \"c_18ab\" } }`",
+      "consumers": []
+    },
+    "LoadState": {
+      "ownerComponent": "C10",
+      "definition": "`{ status: \"loading\" } | { status: \"empty\" } | { status: \"error\", error: AppError } | { status: \"ready\", data: T }` — the type that makes \"empty over an error\" unrepresentable (H3)",
+      "example": "`{ \"status\": \"error\", \"error\": { \"code\": \"store-corrupt\", \"message\": \"Your learning data could not be opened.\", \"correlationId\": \"c_18ab\" } }`",
+      "consumers": []
+    },
+    "ExtractionOutcome": {
+      "ownerComponent": "C11",
+      "definition": "`{ ok: true, kind: SourceKind, text: string, pageCount: number | null, truncated: boolean } | { ok: false, reason: \"unsupported\" | \"too-large\" | \"unparseable\" | \"no-text\" | \"empty\", message: string }`",
+      "example": "`{ \"ok\": false, \"reason\": \"no-text\", \"message\": \"That PDF is a picture of a page, not text — a scan. …\" }`",
+      "consumers": []
+    },
+    "SourceChunk": {
+      "ownerComponent": "C11",
+      "definition": "`{ label: string, text: string, ordinal: number }`",
+      "example": "`{ \"label\": \"syllabus.pdf · Unit 3: Entropy\", \"text\": \"Entropy of a discrete source…\", \"ordinal\": 4 }`",
+      "consumers": []
+    },
+    "BoundedView": {
+      "ownerComponent": "C11",
+      "definition": "`{ blocks: { label: string, text: string }[], omitted: number }`",
+      "example": "`{ \"blocks\": [{ \"label\": \"The units this material names, in its own order\", \"text\": \"Unit 1: Probability review\\nUnit 2: Entropy\" }], \"omitted\": 3 }`",
+      "consumers": []
+    },
+    "TopicMaterial": {
+      "ownerComponent": "C11",
+      "definition": "`{ documentCount: number, units: SourceUnit[], keyTerms: string[], chunks: SourceChunk[], truncated: boolean }`",
+      "example": null,
+      "consumers": [
+        "C4"
+      ]
+    },
+    "MaterialBrief": {
+      "ownerComponent": "C11",
+      "definition": "`{ units: SourceUnit[], keyTerms: string[], blocks: { label, text }[], omitted: number, truncated: boolean, documentCount: number }` — the only shape that ever enters a prompt.",
+      "example": null,
+      "consumers": [
+        "C4"
+      ]
+    }
+  },
+  "egressMatrix": [
+    {
+      "destination": "log sink (`<dataRoot>/logs/*.ndjson` + stderr)",
+      "dataClasses": [
+        "internal"
+      ],
+      "gate": "`scrub()` on every emit",
+      "default": "on",
+      "owners": [
+        "C0"
+      ]
+    },
+    {
+      "destination": "SQLite store (`<dataRoot>/learn.db`)",
+      "dataClasses": [
+        "pii",
+        "internal"
+      ],
+      "gate": "filesystem perms, mode 0600",
+      "default": "on",
+      "owners": [
+        "C1"
+      ]
+    },
+    {
+      "destination": "module directories (`<dataRoot>/topics/**`)",
+      "dataClasses": [
+        "pii",
+        "internal"
+      ],
+      "gate": "path confinement per the C2 sandbox",
+      "default": "on",
+      "owners": [
+        "C2"
+      ]
+    },
+    {
+      "destination": "topic source directories (`<dataRoot>/topics/**/source/`) — the material the learner uploaded, extracted text **and** original",
+      "dataClasses": [
+        "pii"
+      ],
+      "gate": "path confinement via `sourceDir()`, asserted before any byte is written; mode 0600/0700; removed with the topic",
+      "default": "on",
+      "owners": [
+        "C11"
+      ]
+    },
+    {
+      "destination": "upload staging (`<dataRoot>/staging/<sourceId>/`) — an upload between \"read it\" and \"file it under this subject\"",
+      "dataClasses": [
+        "pii"
+      ],
+      "gate": "`SourceId` pattern + containment assertion; swept on a 24h TTL",
+      "default": "on",
+      "owners": [
+        "C11"
+      ]
+    },
+    {
+      "destination": "`claude` CLI subprocess (argv + stdin prompt) → Anthropic API",
+      "dataClasses": [
+        "pii (purpose",
+        "answers",
+        "reflections",
+        "bounded excerpts of uploaded material)",
+        "internal"
+      ],
+      "gate": "the learner's press on the named control; C2 sandbox + `sessionConcurrency` limit",
+      "default": "on (single-user local app; pressing the control is the authorisation)",
+      "owners": [
+        "C2"
+      ]
+    },
+    {
+      "destination": "Ollama server (`http://127.0.0.1:11434/api/chat`, prompt in the request body)",
+      "dataClasses": [
+        "pii (purpose",
+        "answers",
+        "reflections",
+        "bounded excerpts of uploaded material)",
+        "internal"
+      ],
+      "gate": "same as the CLI; only when `provider` is `ollama`",
+      "default": "off (provider defaults to `claude`)",
+      "owners": [
+        "C2"
+      ]
+    },
+    {
+      "destination": "llama.cpp server (`http://127.0.0.1:18080/v1/chat/completions`, prompt in the request body)",
+      "dataClasses": [
+        "pii (purpose",
+        "answers",
+        "reflections",
+        "bounded excerpts of uploaded material)",
+        "internal"
+      ],
+      "gate": "same as the CLI; only when `provider` is `llama`",
+      "default": "off (provider defaults to `claude`)",
+      "owners": [
+        "C2"
+      ]
+    },
+    {
+      "destination": "Anthropic API direct (`https://api.anthropic.com/v1/messages`, prompt in the request body)",
+      "dataClasses": [
+        "pii (purpose",
+        "answers",
+        "reflections",
+        "bounded excerpts of uploaded material)",
+        "internal"
+      ],
+      "gate": "same as the CLI; only when `provider` is `anthropic`; key from the environment, never stored",
+      "default": "off (provider defaults to `claude`)",
+      "owners": [
+        "C2"
+      ]
+    },
+    {
+      "destination": "OpenAI API (`https://api.openai.com/v1/chat/completions`, prompt in the request body)",
+      "dataClasses": [
+        "pii (purpose",
+        "answers",
+        "reflections",
+        "bounded excerpts of uploaded material)",
+        "internal"
+      ],
+      "gate": "same as the CLI; only when `provider` is `openai`; key from the environment, never stored",
+      "default": "off (provider defaults to `claude`)",
+      "owners": [
+        "C2"
+      ]
+    },
+    {
+      "destination": "OpenAI-compatible endpoint (`<LA_OPENAI_COMPAT_URL>/chat/completions`, prompt in the request body)",
+      "dataClasses": [
+        "pii (purpose",
+        "answers",
+        "reflections",
+        "bounded excerpts of uploaded material)",
+        "internal"
+      ],
+      "gate": "same as the CLI; only when `provider` is `openai-compatible`; the learner sets the address, so this leaves the machine only if the address does",
+      "default": "off (provider defaults to `claude`; the default address is `127.0.0.1:1234`)",
+      "owners": [
+        "C2"
+      ]
+    },
+    {
+      "destination": "Google Gemini (`https://generativelanguage.googleapis.com/v1beta/models/<id>:streamGenerateContent`, prompt in the request body)",
+      "dataClasses": [
+        "pii (purpose",
+        "answers",
+        "reflections",
+        "bounded excerpts of uploaded material)",
+        "internal"
+      ],
+      "gate": "same as the CLI; only when `provider` is `gemini`; key from the environment, never stored",
+      "default": "off (provider defaults to `claude`)",
+      "owners": [
+        "C2"
+      ]
+    },
+    {
+      "destination": "Mistral API (`https://api.mistral.ai/v1/chat/completions`, prompt in the request body)",
+      "dataClasses": [
+        "pii (purpose",
+        "answers",
+        "reflections",
+        "bounded excerpts of uploaded material)",
+        "internal"
+      ],
+      "gate": "same as the CLI; only when `provider` is `mistral`; key from the environment, never stored",
+      "default": "off (provider defaults to `claude`)",
+      "owners": [
+        "C2"
+      ]
+    },
+    {
+      "destination": "outbound video link (learner click, `target=\"_blank\" rel=\"noopener noreferrer\"`)",
+      "dataClasses": [
+        "public (URL only)"
+      ],
+      "gate": "learner click; `Referrer-Policy: no-referrer`",
+      "default": "on",
+      "owners": [
+        "C10"
+      ]
+    },
+    {
+      "destination": "HTTP responses on `127.0.0.1:31544`",
+      "dataClasses": [
+        "pii",
+        "internal"
+      ],
+      "gate": "per-launch bearer token",
+      "default": "on",
+      "owners": [
+        "C9"
+      ]
+    },
+    {
+      "destination": "repository (committed files)",
+      "dataClasses": [
+        "public"
+      ],
+      "gate": "`.gitignore` (`data/`, `logs/`, `.env*`, `*.ndjson`)",
+      "default": "n/a",
+      "owners": [
+        "C0"
+      ]
+    }
+  ],
+  "files": {
+    "src/shapes.ts": {
+      "hash": "",
+      "implements": [],
+      "components": [
+        "C0"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/core/paths.ts": {
+      "hash": "",
+      "implements": [],
+      "components": [
+        "C0"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/core/config.ts": {
+      "hash": "",
+      "implements": [],
+      "components": [
+        "C0"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/core/log.ts": {
+      "hash": "",
+      "implements": [],
+      "components": [
+        "C0"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/core/scrub.ts": {
+      "hash": "",
+      "implements": [],
+      "components": [
+        "C0"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/core/errors.ts": {
+      "hash": "",
+      "implements": [],
+      "components": [
+        "C0"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/core/release.ts": {
+      "hash": "",
+      "implements": [],
+      "components": [
+        "C0"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/open.ts": {
+      "hash": "",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/migrations.ts": {
+      "hash": "",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/schema.sql.ts": {
+      "hash": "",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/topics.ts": {
+      "hash": "",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/modules.ts": {
+      "hash": "",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/evals.ts": {
+      "hash": "",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/reviews.ts": {
+      "hash": "",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/reflections.ts": {
+      "hash": "",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/jobs.ts": {
+      "hash": "",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/complete.ts": {
+      "hash": "",
+      "implements": [
+        "F5",
+        "F1",
+        "F13"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/run-session.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/sandbox.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/prompt.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/chat.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/workspace.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/http-session.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/ollama.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/llama.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/openai.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/gemini.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/anthropic.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/availability.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/semaphore.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/cli/transport.fake.ts": {
+      "hash": "",
+      "implements": [
+        "F6"
+      ],
+      "components": [
+        "C2"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/engine.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/plan.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/research.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/author-module.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/capstone-spec.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/discontinuity.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/repair.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/repair.budget.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/prepare-available.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/prep-window.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/detour.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/content-validate.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/orchestrator/reconcile.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F12"
+      ],
+      "components": [
+        "C4"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/graph/availability.ts": {
+      "hash": "",
+      "implements": [
+        "F3",
+        "F5",
+        "F12"
+      ],
+      "components": [
+        "C5"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/graph/entry.ts": {
+      "hash": "",
+      "implements": [
+        "F3",
+        "F5",
+        "F12"
+      ],
+      "components": [
+        "C5"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/graph/insertion.ts": {
+      "hash": "",
+      "implements": [
+        "F3",
+        "F5",
+        "F12"
+      ],
+      "components": [
+        "C5"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/graph/rollup.ts": {
+      "hash": "",
+      "implements": [
+        "F3",
+        "F5",
+        "F12"
+      ],
+      "components": [
+        "C5"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/graph/dashboard.ts": {
+      "hash": "",
+      "implements": [
+        "F3",
+        "F5",
+        "F12"
+      ],
+      "components": [
+        "C5"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/eval/session.ts": {
+      "hash": "",
+      "implements": [
+        "F4",
+        "F9",
+        "F13"
+      ],
+      "components": [
+        "C6"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/eval/turn.ts": {
+      "hash": "",
+      "implements": [
+        "F4",
+        "F9",
+        "F13"
+      ],
+      "components": [
+        "C6"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/eval/hints.ts": {
+      "hash": "",
+      "implements": [
+        "F4",
+        "F9",
+        "F13"
+      ],
+      "components": [
+        "C6"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/eval/angles.ts": {
+      "hash": "",
+      "implements": [
+        "F4",
+        "F9",
+        "F13"
+      ],
+      "components": [
+        "C6"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/eval/teach-back.ts": {
+      "hash": "",
+      "implements": [
+        "F4",
+        "F9",
+        "F13"
+      ],
+      "components": [
+        "C6"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/eval/remedial.ts": {
+      "hash": "",
+      "implements": [
+        "F4",
+        "F9",
+        "F13"
+      ],
+      "components": [
+        "C6"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/eval/synthesis.ts": {
+      "hash": "",
+      "implements": [
+        "F4",
+        "F9",
+        "F13"
+      ],
+      "components": [
+        "C6"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/eval/capstone.ts": {
+      "hash": "",
+      "implements": [
+        "F4",
+        "F9",
+        "F13"
+      ],
+      "components": [
+        "C6"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/eval/verdict-parse.ts": {
+      "hash": "",
+      "implements": [
+        "F4",
+        "F9",
+        "F13"
+      ],
+      "components": [
+        "C6"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/review/memory.ts": {
+      "hash": "",
+      "implements": [
+        "F7",
+        "F8"
+      ],
+      "components": [
+        "C7"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/review/schedule.ts": {
+      "hash": "",
+      "implements": [
+        "F7",
+        "F8"
+      ],
+      "components": [
+        "C7"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/review/cue.ts": {
+      "hash": "",
+      "implements": [
+        "F7",
+        "F8"
+      ],
+      "components": [
+        "C7"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/review/queue.ts": {
+      "hash": "",
+      "implements": [
+        "F7",
+        "F8"
+      ],
+      "components": [
+        "C7"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/review/question.ts": {
+      "hash": "",
+      "implements": [
+        "F7",
+        "F8"
+      ],
+      "components": [
+        "C7"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/practice/mix.ts": {
+      "hash": "",
+      "implements": [
+        "F7",
+        "F8"
+      ],
+      "components": [
+        "C7"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/practice/session.ts": {
+      "hash": "",
+      "implements": [
+        "F7",
+        "F8"
+      ],
+      "components": [
+        "C7"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/reflect/prediction.ts": {
+      "hash": "",
+      "implements": [
+        "F10",
+        "F11"
+      ],
+      "components": [
+        "C8"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/reflect/calibration.ts": {
+      "hash": "",
+      "implements": [
+        "F10",
+        "F11"
+      ],
+      "components": [
+        "C8"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/reflect/journal.ts": {
+      "hash": "",
+      "implements": [
+        "F10",
+        "F11"
+      ],
+      "components": [
+        "C8"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/api/auth.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/api/respond.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/api/validate.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/api/source.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/source/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/topics/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/topics/[id]/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/topics/[id]/stream/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/topics/[id]/generate/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/topics/[id]/detour/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/modules/[id]/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/eval/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/eval/[sessionId]/send/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/capstone/[topicId]/submit/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/reviews/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/practice/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/reflections/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/predictions/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/provider/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/api/health/route.ts": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F2",
+        "F13"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/layout.tsx,": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F3",
+        "F4",
+        "F5",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12",
+        "F13"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/topics/new/page.tsx,": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F3",
+        "F4",
+        "F5",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12",
+        "F13"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/modules/[id]/page.tsx,": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F3",
+        "F4",
+        "F5",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12",
+        "F13"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/review/page.tsx,": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F3",
+        "F4",
+        "F5",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12",
+        "F13"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "planned"
+    },
+    "app/settings/page.tsx,": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F3",
+        "F4",
+        "F5",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12",
+        "F13"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/ui/store.ts,": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F3",
+        "F4",
+        "F5",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12",
+        "F13"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/ui/components/GraphView.tsx,": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F3",
+        "F4",
+        "F5",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12",
+        "F13"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/ui/sanitize.ts,": {
+      "hash": "",
+      "implements": [
+        "F1",
+        "F3",
+        "F4",
+        "F5",
+        "F7",
+        "F8",
+        "F9",
+        "F10",
+        "F11",
+        "F12",
+        "F13"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "planned"
+    },
+    "src/store/cards.ts": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C1"
+      ],
+      "generatedBy": "built"
+    },
+    "src/cards/library.ts": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C7"
+      ],
+      "generatedBy": "built"
+    },
+    "src/cards/parse.ts": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C7"
+      ],
+      "generatedBy": "built"
+    },
+    "src/ui/cards-copy.ts": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "built"
+    },
+    "src/ui/components/CardStudy.tsx": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "built"
+    },
+    "app/cards/page.tsx": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "built"
+    },
+    "app/cards/[deckId]/page.tsx": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C10"
+      ],
+      "generatedBy": "built"
+    },
+    "app/api/cards/decks/route.ts": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "built"
+    },
+    "app/api/cards/decks/[deckId]/route.ts": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "built"
+    },
+    "app/api/cards/decks/[deckId]/cards/route.ts": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "built"
+    },
+    "app/api/cards/[cardId]/route.ts": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "built"
+    },
+    "app/api/cards/[cardId]/grade/route.ts": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "built"
+    },
+    "app/api/cards/study/route.ts": {
+      "hash": "",
+      "implements": [
+        "F14"
+      ],
+      "components": [
+        "C9"
+      ],
+      "generatedBy": "built"
+    }
+  },
+  "tests": {
+    "tests/core/shapes.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C0"
+      ],
+      "note": "shape-conformance: every example value in the registry validates against its guard",
+      "generatedBy": "planned"
+    },
+    "tests/core/config.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C0"
+      ],
+      "note": "unit: unparseable file → defaults + warning; out-of-range field → default; unknown key stripped; Settings still openable",
+      "generatedBy": "planned"
+    },
+    "tests/core/scrub.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C0"
+      ],
+      "note": "unit: salted 128-bit digest, salt never emitted, low-entropy field not recoverable by preimage",
+      "generatedBy": "planned"
+    },
+    "tests/core/paths.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C0"
+      ],
+      "note": "unit: malformed TopicId/ModuleId rejected before join; absolute id rejected; `..` rejected",
+      "generatedBy": "planned"
+    },
+    "tests/egress/log-sink.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C0"
+      ],
+      "note": "egress: a payload seeded with a pii marker never appears in a log line",
+      "generatedBy": "planned"
+    },
+    "tests/claims/docs.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C0"
+      ],
+      "note": "claims: every FRACTAL ID in `src/` resolves in features.md/architecture.md; the README egress paragraph matches the matrix; every documented dependency appears in `package.json`",
+      "generatedBy": "planned"
+    },
+    "tests/store/topics.test.ts": {
+      "hash": "",
+      "covers": [
+        "F5"
+      ],
+      "type": "unit",
+      "components": [
+        "C1"
+      ],
+      "note": "unit, covers F5 happy + zero-progress paths",
+      "generatedBy": "planned"
+    },
+    "tests/store/complete.test.ts": {
+      "hash": "",
+      "covers": [
+        "F4"
+      ],
+      "type": "integration",
+      "components": [
+        "C1"
+      ],
+      "note": "integration, covers F4 completion + unlock + review scheduling in one transaction",
+      "generatedBy": "planned"
+    },
+    "tests/durability/store.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C1"
+      ],
+      "note": "durability: corrupt primary → `.prev` loads; version-ahead store refuses to open; mid-migration throw leaves neither partial schema nor bumped version; POSIX file mode is 0600; unparseable topic surfaces as `DegradedTopic`, never skipped",
+      "generatedBy": "planned"
+    },
+    "tests/recovery/degraded-topic.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C1"
+      ],
+      "note": "recovery: one corrupt topic among several — the others stay usable and the corrupt one is deletable from inside the app",
+      "generatedBy": "planned"
+    },
+    "tests/recovery/store-corrupt.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C1"
+      ],
+      "note": "recovery: corrupt store → in-app \"use previous generation\" works",
+      "generatedBy": "planned"
+    },
+    "tests/perf/store-scale.perf.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "perf",
+      "components": [
+        "C1"
+      ],
+      "note": "perf at `scale:` topics=50, modules=600 — `topics.list()` issues one query, dashboard read < 300ms p95",
+      "generatedBy": "planned"
+    },
+    "tests/store/sql-injection.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C1"
+      ],
+      "note": "sink-abuse: adversarial ids and free text cannot alter a statement",
+      "generatedBy": "planned"
+    },
+    "tests/cli/sandbox.test.ts": {
+      "hash": "",
+      "covers": [
+        "F6"
+      ],
+      "type": "unit",
+      "components": [
+        "C2"
+      ],
+      "note": "unit, covers F6 happy + out-of-bounds write rejected + symlink escape rejected",
+      "generatedBy": "planned"
+    },
+    "tests/cli/workspace.test.ts": {
+      "hash": "",
+      "covers": [
+        "F6"
+      ],
+      "type": "unit",
+      "components": [
+        "C2"
+      ],
+      "note": "unit, covers F6: the file-scoped authoring path a provider with no file tools goes through — the module directory is carried into the prompt as fenced data, an evaluation turn with no file tools is left untouched, a file cannot close the fence and become instructions, and the answer’s `files` map is written back through the sandbox with out-of-bounds paths refused and the finished lesson kept",
+      "generatedBy": "planned"
+    },
+    "tests/cli/prompt.test.ts": {
+      "hash": "",
+      "covers": [
+        "F6"
+      ],
+      "type": "unit",
+      "components": [
+        "C2"
+      ],
+      "note": "unit, covers F6 \"just enough context\": the brief contains no repository path and no unrelated module content; the preview and the sent payload come from the same function",
+      "generatedBy": "planned"
+    },
+    "tests/cli/timeout.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C2"
+      ],
+      "note": "lifecycle: a child that never returns is killed within the declared window and the in-flight flag clears",
+      "generatedBy": "planned"
+    },
+    "tests/cli/concurrency.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C2"
+      ],
+      "note": "unit: no more sessions are open at once than `sessionConcurrency` allows, and the permit queue runs in order and returns a permit on a throw",
+      "generatedBy": "planned"
+    },
+    "tests/cli/only-spawner.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "integration",
+      "components": [
+        "C2"
+      ],
+      "note": "integration: this component is the only place in `src/` that spawns a session, so the limit cannot be gone round",
+      "generatedBy": "planned"
+    },
+    "tests/cli/remote-providers.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "integration",
+      "components": [
+        "C2"
+      ],
+      "note": "integration against a fake server, no network: each hosted adapter's address, key header and model; a keyless OpenAI-compatible server on this machine; the JSON-mode retry; a refused key as a failed session; Gemini's finish reason; the planning/chat model split on all five hosted providers; a key in neither the saved settings nor the log",
+      "generatedBy": "planned"
+    },
+    "tests/lifecycle/session-runner.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C2"
+      ],
+      "note": "lifecycle: cancelling mid-flight kills the process group and releases the per-module mutex; owner teardown cancels every child",
+      "generatedBy": "planned"
+    },
+    "tests/sinks/exec.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C2"
+      ],
+      "note": "sink-abuse: a caller-supplied binary path is ignored in favour of config; argv is never shell-interpreted; adversarial module titles cannot inject an argument",
+      "generatedBy": "planned"
+    },
+    "tests/sinks/fs-path.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C2"
+      ],
+      "note": "sink-abuse battery: absolute id, `..`, URL-encoded `..`, double-encoded, symlink, over-long, empty — each rejected before the join",
+      "generatedBy": "planned"
+    },
+    "tests/release/surface.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C2"
+      ],
+      "note": "release: `transport.fake` does not appear in the release bundle; no definedness-style env gate anywhere in `src/`",
+      "generatedBy": "planned"
+    },
+    "e2e/f6-sandbox.spec.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "e2e",
+      "components": [
+        "C2"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/orchestrator/plan.test.ts": {
+      "hash": "",
+      "covers": [
+        "F2"
+      ],
+      "type": "unit",
+      "components": [
+        "C4"
+      ],
+      "note": "unit, covers F2 session-count determinism — the count quoted is the count dispatched",
+      "generatedBy": "planned"
+    },
+    "tests/orchestrator/generate.test.ts": {
+      "hash": "",
+      "covers": [
+        "F2"
+      ],
+      "type": "integration",
+      "components": [
+        "C4"
+      ],
+      "note": "integration, covers F2 happy branching graph + strictly linear chain + research-fallback paths",
+      "generatedBy": "planned"
+    },
+    "tests/orchestrator/failure.test.ts": {
+      "hash": "",
+      "covers": [
+        "F2"
+      ],
+      "type": "integration",
+      "components": [
+        "C4"
+      ],
+      "note": "integration, covers F2 \"a module session fails or times out\": partial modules kept, topic `needs-attention`, retry offered",
+      "generatedBy": "planned"
+    },
+    "tests/orchestrator/discontinuity.test.ts": {
+      "hash": "",
+      "covers": [
+        "F2"
+      ],
+      "type": "integration",
+      "components": [
+        "C4"
+      ],
+      "note": "integration, covers F2 \"review finds a gap\": runs exactly once, its findings are fixed rather than shown, cross-topic candidates surfaced",
+      "generatedBy": "planned"
+    },
+    "tests/orchestrator/repair.test.ts": {
+      "hash": "",
+      "covers": [
+        "F2"
+      ],
+      "type": "unit",
+      "components": [
+        "C4"
+      ],
+      "note": "unit, covers F2 finding routing — ids, lesson numbers and titles; round ranking and its cap; what a repair session is told",
+      "generatedBy": "planned"
+    },
+    "tests/orchestrator/graph-validate.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C4"
+      ],
+      "note": "path: cyclic proposal → named edge dropped with a `graph-defect` note; unreachable node detected; ≥1 entry module",
+      "generatedBy": "planned"
+    },
+    "tests/orchestrator/detour.test.ts": {
+      "hash": "",
+      "covers": [
+        "F12"
+      ],
+      "type": "unit",
+      "components": [
+        "C4"
+      ],
+      "note": "unit, covers F12 happy + declined-while-needs-attention + abandoned-partway; asserts a detour never becomes a prerequisite of an existing module and no module is renumbered",
+      "generatedBy": "planned"
+    },
+    "tests/orchestrator/content-validate.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C4"
+      ],
+      "note": "sink-abuse: model output proposing an `http:` or `file:` explanation URL, a non-allowlisted host, an edge to a foreign module id, or a 10 MB `content.json` is rejected",
+      "generatedBy": "planned"
+    },
+    "tests/durability/module-commit.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C4"
+      ],
+      "note": "durability: interrupt between `content.json` and the row — the reader never silently skips; the reconcile sweep rebuilds from the digest",
+      "generatedBy": "planned"
+    },
+    "tests/lifecycle/job-engine.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C4"
+      ],
+      "note": "lifecycle: process teardown cancels in-flight jobs; `running` rows reset to `queued` at boot; every spawned task is strongly referenced",
+      "generatedBy": "planned"
+    },
+    "tests/perf/generation.perf.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "perf",
+      "components": [
+        "C4"
+      ],
+      "note": "perf at `scale:` modules per topic=12, sessions=14 — end-to-end generation under the 20-minute p95 budget against the fake transport at declared scale",
+      "generatedBy": "planned"
+    },
+    "e2e/f2-generation.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F2"
+      ],
+      "type": "e2e",
+      "components": [
+        "C4"
+      ],
+      "note": "e2e, covers F2 happy + notes visible",
+      "generatedBy": "planned"
+    },
+    "e2e/f12-detour.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F12"
+      ],
+      "type": "e2e",
+      "components": [
+        "C4"
+      ],
+      "note": "e2e, covers F12 happy + decline path",
+      "generatedBy": "planned"
+    },
+    "tests/graph/availability.test.ts": {
+      "hash": "",
+      "covers": [
+        "F3",
+        "F5"
+      ],
+      "type": "unit",
+      "components": [
+        "C5"
+      ],
+      "note": "unit, covers F3 \"≥2 available modules\" + F5 mixed/zero-progress paths",
+      "generatedBy": "planned"
+    },
+    "tests/graph/entry.test.ts": {
+      "hash": "",
+      "covers": [
+        "F3"
+      ],
+      "type": "unit",
+      "components": [
+        "C5"
+      ],
+      "note": "unit, covers F3 \"enter past the unmet-prereq advisory\" — `canEnter` never returns non-enterable, for every graph shape including the zero-entry-module case",
+      "generatedBy": "planned"
+    },
+    "tests/graph/insertion.test.ts": {
+      "hash": "",
+      "covers": [
+        "F12"
+      ],
+      "type": "unit",
+      "components": [
+        "C5"
+      ],
+      "note": "unit, covers F12 insertion validity: cycle rejected, prereq-of-existing rejected",
+      "generatedBy": "planned"
+    },
+    "tests/graph/rollup.test.ts": {
+      "hash": "",
+      "covers": [
+        "F5",
+        "F13"
+      ],
+      "type": "unit",
+      "components": [
+        "C5"
+      ],
+      "note": "unit, covers F5 `modules-complete` vs `done` and F13's gating",
+      "generatedBy": "planned"
+    },
+    "tests/graph/no-grades.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C5"
+      ],
+      "note": "claims/AC: no numeric or letter grade appears in `DashboardView` or in any C10 progress string — a content assertion over the rendered strings",
+      "generatedBy": "planned"
+    },
+    "tests/perf/dashboard.perf.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "perf",
+      "components": [
+        "C5"
+      ],
+      "note": "perf at `scale:` topics=50, modules=600 — dashboard < 300ms p95, one query, comparator hoisted",
+      "generatedBy": "planned"
+    },
+    "e2e/f3-graph.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F3"
+      ],
+      "type": "e2e",
+      "components": [
+        "C5"
+      ],
+      "note": "e2e, covers F3 choose-among-available + advisory acknowledgment",
+      "generatedBy": "planned"
+    },
+    "e2e/f5-dashboard.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F5"
+      ],
+      "type": "e2e",
+      "components": [
+        "C5"
+      ],
+      "note": "e2e, covers F5 happy + zero progress + `modules-complete`",
+      "generatedBy": "planned"
+    },
+    "tests/eval/turn.test.ts": {
+      "hash": "",
+      "covers": [
+        "F4"
+      ],
+      "type": "unit",
+      "components": [
+        "C6"
+      ],
+      "note": "unit, covers F4 happy unassisted pass + persistence-per-turn",
+      "generatedBy": "planned"
+    },
+    "tests/eval/hints.test.ts": {
+      "hash": "",
+      "covers": [
+        "F4"
+      ],
+      "type": "unit",
+      "components": [
+        "C6"
+      ],
+      "note": "unit, covers F4 \"pass with heavy hints\" → `assisted-pass` persisted and readable by C7's scheduler",
+      "generatedBy": "planned"
+    },
+    "tests/eval/angles.test.ts": {
+      "hash": "",
+      "covers": [
+        "F4"
+      ],
+      "type": "unit",
+      "components": [
+        "C6"
+      ],
+      "note": "unit, covers F4 \"re-asked question is not a verbatim repeat\" — angle ledger + near-duplicate rejection; asserts the check *fails* against a deliberately repeated question",
+      "generatedBy": "planned"
+    },
+    "tests/eval/teach-back.test.ts": {
+      "hash": "",
+      "covers": [
+        "F4"
+      ],
+      "type": "unit",
+      "components": [
+        "C6"
+      ],
+      "note": "unit, covers F4 teach-back path: passes only when the planted misconception is named and corrected",
+      "generatedBy": "planned"
+    },
+    "tests/eval/remedial.test.ts": {
+      "hash": "",
+      "covers": [
+        "F4"
+      ],
+      "type": "integration",
+      "components": [
+        "C6"
+      ],
+      "note": "integration, covers F4 \"repeated failures trigger remedial mini-module, then re-ask\"",
+      "generatedBy": "planned"
+    },
+    "tests/eval/test-out.test.ts": {
+      "hash": "",
+      "covers": [
+        "F3",
+        "F4"
+      ],
+      "type": "integration",
+      "components": [
+        "C6"
+      ],
+      "note": "integration, covers F3/F4 test-out passes cold + test-out fails → routed into the lesson, not the remedial loop",
+      "generatedBy": "planned"
+    },
+    "tests/eval/resume.test.ts": {
+      "hash": "",
+      "covers": [
+        "F4"
+      ],
+      "type": "integration",
+      "components": [
+        "C6"
+      ],
+      "note": "integration, covers F4 abandon-and-resume",
+      "generatedBy": "planned"
+    },
+    "tests/eval/verdict-parse.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C6"
+      ],
+      "note": "unit + sink-abuse: unparseable verdict, a `pass` unsupported by `passCriteria`, an oversized payload, and a prompt-injection attempt in learner text are each rejected",
+      "generatedBy": "planned"
+    },
+    "tests/eval/synthesis.test.ts": {
+      "hash": "",
+      "covers": [
+        "F9"
+      ],
+      "type": "unit",
+      "components": [
+        "C6"
+      ],
+      "note": "unit, covers F9 happy + fail-and-re-ask + fewer-than-2-topics inactive; asserts both topics are named and neither topic's completion state changes",
+      "generatedBy": "planned"
+    },
+    "tests/eval/capstone.test.ts": {
+      "hash": "",
+      "covers": [
+        "F13"
+      ],
+      "type": "integration",
+      "components": [
+        "C6"
+      ],
+      "note": "integration, covers F13 happy + revise-and-resubmit + vague-purpose fallback + attempted-past-advisory; asserts prior-round feedback stays visible and the topic is not `done` until the capstone passes",
+      "generatedBy": "planned"
+    },
+    "tests/optimistic/eval-send.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "optimistic",
+      "components": [
+        "C6"
+      ],
+      "note": "Optimistic-UI: the message renders and the composer re-enables on the same tick; a failed send rolls back and surfaces the error",
+      "generatedBy": "planned"
+    },
+    "tests/lifecycle/eval-session.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C6"
+      ],
+      "note": "lifecycle: navigating away cancels the child and releases the per-session mutex",
+      "generatedBy": "planned"
+    },
+    "tests/perf/eval-send.perf.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "perf",
+      "components": [
+        "C6"
+      ],
+      "note": "perf at `scale:` exchanges=20 — UI-overhead p95 < 100ms, measured on the optimistic apply, not the round-trip",
+      "generatedBy": "planned"
+    },
+    "e2e/f4-evaluation.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F4"
+      ],
+      "type": "e2e",
+      "components": [
+        "C6"
+      ],
+      "note": "e2e, covers F4 happy + fail-then-pass + teach-back",
+      "generatedBy": "planned"
+    },
+    "e2e/f9-synthesis.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F9"
+      ],
+      "type": "e2e",
+      "components": [
+        "C6"
+      ],
+      "note": "e2e, covers F9",
+      "generatedBy": "planned"
+    },
+    "e2e/f13-capstone.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F13"
+      ],
+      "type": "e2e",
+      "components": [
+        "C6"
+      ],
+      "note": "e2e, covers F13 happy + revise-and-resubmit",
+      "generatedBy": "planned"
+    },
+    "tests/review/schedule.test.ts": {
+      "hash": "",
+      "covers": [
+        "F7"
+      ],
+      "type": "unit",
+      "components": [
+        "C7"
+      ],
+      "note": "unit, covers F7 happy interval extension + miss shortens and flags `needs-review` + max-interval module still resurfaces, never graduates",
+      "generatedBy": "planned"
+    },
+    "tests/review/assist-weight.test.ts": {
+      "hash": "",
+      "covers": [
+        "F7"
+      ],
+      "type": "unit",
+      "components": [
+        "C7"
+      ],
+      "note": "unit, covers F7 assist weighting: an `assisted-pass` gets the shorter first interval and stays ahead over a shared history",
+      "generatedBy": "planned"
+    },
+    "tests/review/fsrs.test.ts": {
+      "hash": "",
+      "covers": [
+        "F8"
+      ],
+      "type": "unit",
+      "components": [
+        "C7"
+      ],
+      "note": "unit, covers the memory model over simulated review histories: the grade mapping, sub-geometric interval growth, post-lapse stability, same-day F8 retrievals, determinism, and reading legacy ease-based rows",
+      "generatedBy": "planned"
+    },
+    "tests/review/review-failure.test.ts": {
+      "hash": "",
+      "covers": [
+        "F7"
+      ],
+      "type": "integration",
+      "components": [
+        "C7"
+      ],
+      "note": "integration, covers F7's missed-review path taken through C6's chat: one lapse per session, `needs-review` re-flagged, and a module target left alone",
+      "generatedBy": "planned"
+    },
+    "tests/review/migration.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "integration",
+      "components": [
+        "C7"
+      ],
+      "note": "integration, covers the v5 migration: a mid-course learner's schedule is carried over, not reset",
+      "generatedBy": "planned"
+    },
+    "tests/review/no-scores.test.ts": {
+      "hash": "",
+      "covers": [
+        "F5",
+        "F7"
+      ],
+      "type": "unit",
+      "components": [
+        "C7"
+      ],
+      "note": "unit, covers F5/F7 AC: no stability, difficulty or retrievability value crosses the API boundary",
+      "generatedBy": "planned"
+    },
+    "tests/review/no-verbatim.test.ts": {
+      "hash": "",
+      "covers": [
+        "F7"
+      ],
+      "type": "unit",
+      "components": [
+        "C7"
+      ],
+      "note": "unit, covers F7 AC: a review question is not a verbatim repeat of the original eval question; the check fails against a deliberately identical question",
+      "generatedBy": "planned"
+    },
+    "tests/review/queue-not-gate.test.ts": {
+      "hash": "",
+      "covers": [
+        "F7"
+      ],
+      "type": "unit",
+      "components": [
+        "C7"
+      ],
+      "note": "unit, covers F7 AC: overdue reviews do not block any other action",
+      "generatedBy": "planned"
+    },
+    "tests/practice/mix.test.ts": {
+      "hash": "",
+      "covers": [
+        "F8"
+      ],
+      "type": "unit",
+      "components": [
+        "C7"
+      ],
+      "note": "unit, covers F8 happy mixed session + single-topic fallback with no error; asserts no session draws all questions from one topic when ≥2 qualify",
+      "generatedBy": "planned"
+    },
+    "tests/practice/stop.test.ts": {
+      "hash": "",
+      "covers": [
+        "F8"
+      ],
+      "type": "unit",
+      "components": [
+        "C7"
+      ],
+      "note": "unit, covers F8 stop-mid-session partial save",
+      "generatedBy": "planned"
+    },
+    "tests/optimistic/practice-answer.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "optimistic",
+      "components": [
+        "C7"
+      ],
+      "note": "Optimistic-UI: answer applies on the same tick, rolls back on failure",
+      "generatedBy": "planned"
+    },
+    "tests/perf/practice-start.perf.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "perf",
+      "components": [
+        "C7"
+      ],
+      "note": "perf at `scale:` candidate pool=600 — session start < 300ms p95",
+      "generatedBy": "planned"
+    },
+    "tests/perf/review-queue.perf.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "perf",
+      "components": [
+        "C7"
+      ],
+      "note": "perf at `scale:` modules under review=600, queue depth=200 — one query, no N+1",
+      "generatedBy": "planned"
+    },
+    "e2e/f7-review.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F7"
+      ],
+      "type": "e2e",
+      "components": [
+        "C7"
+      ],
+      "note": "e2e, covers F7 happy + missed review",
+      "generatedBy": "planned"
+    },
+    "e2e/f8-practice.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F8"
+      ],
+      "type": "e2e",
+      "components": [
+        "C7"
+      ],
+      "note": "e2e, covers F8 happy + stop mid-session",
+      "generatedBy": "planned"
+    },
+    "tests/reflect/prediction.test.ts": {
+      "hash": "",
+      "covers": [
+        "F10"
+      ],
+      "type": "unit",
+      "components": [
+        "C8"
+      ],
+      "note": "unit, covers F10 happy + skipped + wildly-miscalibrated paths; asserts the prompt never blocks module entry",
+      "generatedBy": "planned"
+    },
+    "tests/reflect/calibration.test.ts": {
+      "hash": "",
+      "covers": [
+        "F10"
+      ],
+      "type": "unit",
+      "components": [
+        "C8"
+      ],
+      "note": "unit, covers F10 \"self-assessments present\" + absence-is-silent; asserts the view contains no number or letter grade",
+      "generatedBy": "planned"
+    },
+    "tests/reflect/journal.test.ts": {
+      "hash": "",
+      "covers": [
+        "F11"
+      ],
+      "type": "unit",
+      "components": [
+        "C8"
+      ],
+      "note": "unit, covers F11 happy + none-written + edited-latest-wins",
+      "generatedBy": "planned"
+    },
+    "tests/reflect/verbatim.test.ts": {
+      "hash": "",
+      "covers": [
+        "F11"
+      ],
+      "type": "integration",
+      "components": [
+        "C8"
+      ],
+      "note": "integration, covers F11 AC: the text C7 quotes at review is byte-identical to what was stored",
+      "generatedBy": "planned"
+    },
+    "tests/optimistic/reflection-save.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "optimistic",
+      "components": [
+        "C8"
+      ],
+      "note": "Optimistic-UI: the editor stays enabled, a failed save rolls back and surfaces an error",
+      "generatedBy": "planned"
+    },
+    "tests/perf/prediction-render.perf.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "perf",
+      "components": [
+        "C8"
+      ],
+      "note": "perf at `scale:` modules with predictions=600 — prediction prompt render < 100ms p95",
+      "generatedBy": "planned"
+    },
+    "e2e/f10-calibration.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F10"
+      ],
+      "type": "e2e",
+      "components": [
+        "C8"
+      ],
+      "note": "e2e, covers F10 predict-then-compare + skip",
+      "generatedBy": "planned"
+    },
+    "e2e/f11-reflection.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F11"
+      ],
+      "type": "e2e",
+      "components": [
+        "C8"
+      ],
+      "note": "e2e, covers F11 write-then-surfaced-at-review",
+      "generatedBy": "planned"
+    },
+    "tests/api/auth.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C9"
+      ],
+      "note": "trust boundary: every route rejects a missing/wrong token, including SSE; a foreign `Origin` is rejected; the allowlist is deny-by-default and the test fails if a route is added without auth",
+      "generatedBy": "planned"
+    },
+    "tests/api/validate.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C9"
+      ],
+      "note": "shape-conformance: every route's request and response validate against their declared shapes; every example value round-trips",
+      "generatedBy": "planned"
+    },
+    "tests/api/errors.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C9"
+      ],
+      "note": "H12: no response body contains a filesystem path, a stack, or the submitted value; every error carries a correlation id",
+      "generatedBy": "planned"
+    },
+    "tests/api/health.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C9"
+      ],
+      "note": "release/H5: `/api/health` returns no token, no path, no secret",
+      "generatedBy": "planned"
+    },
+    "tests/api/store-down.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C9"
+      ],
+      "note": "H3: with the store failed, routes return 503 and the UI gets a recovery screen, not an empty dashboard",
+      "generatedBy": "planned"
+    },
+    "tests/sinks/route-ids.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C9"
+      ],
+      "note": "sink-abuse battery on `:id`: absolute, `..`, `%2e%2e`, double-encoded, over-long, empty",
+      "generatedBy": "planned"
+    },
+    "tests/harness/safety.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "hardening",
+      "components": [
+        "C9"
+      ],
+      "note": "H8: global setup/teardown touches nothing outside the project directory and performs no unscoped process kill",
+      "generatedBy": "planned"
+    },
+    "tests/perf/api-loop.perf.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "perf",
+      "components": [
+        "C9"
+      ],
+      "note": "H15 loop-blocking: a heartbeat ticks undelayed while each route runs at declared scale",
+      "generatedBy": "planned"
+    },
+    "tests/ui/warmup-gate.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/ui/advisory.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/ui/graph-choice.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/ui/visualization.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/ui/lesson-blocks.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/ui/load-state.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/ui/no-grades.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/ui/jargon.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/ui/source-material.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/ui/sanitize.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/optimistic/ui-ops.test.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "optimistic",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/perf/module-render.perf.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "perf",
+      "components": [
+        "C10"
+      ],
+      "note": "perf at `scale:` modules per topic=12 — module render < 200ms p95, first-paint < 1500ms p95",
+      "generatedBy": "planned"
+    },
+    "e2e/f1-intake.spec.ts": {
+      "hash": "",
+      "covers": [],
+      "type": "e2e",
+      "components": [
+        "C10"
+      ],
+      "note": "",
+      "generatedBy": "planned"
+    },
+    "tests/cards/parse.test.ts": {
+      "hash": "",
+      "covers": [
+        "F14"
+      ],
+      "type": "unit",
+      "components": [
+        "C7"
+      ],
+      "note": "a pasted list splits on the learner's own separators; unsplittable lines are named, never guessed",
+      "generatedBy": "built"
+    },
+    "tests/cards/library.test.ts": {
+      "hash": "",
+      "covers": [
+        "F14"
+      ],
+      "type": "unit",
+      "components": [
+        "C7",
+        "C1"
+      ],
+      "note": "queue order, the three grades, the memory boundary, edits that leave the schedule alone, deck deletion",
+      "generatedBy": "built"
+    },
+    "tests/ui/cards.test.tsx": {
+      "hash": "",
+      "covers": [
+        "F14"
+      ],
+      "type": "unit",
+      "components": [
+        "C10"
+      ],
+      "note": "the back is withheld until revealed; an unsaved answer is reported without losing the learner's place",
+      "generatedBy": "built"
+    },
+    "e2e/f14-flashcards.spec.ts": {
+      "hash": "",
+      "covers": [
+        "F14"
+      ],
+      "type": "e2e",
+      "components": [
+        "C10",
+        "C9",
+        "C7",
+        "C1"
+      ],
+      "note": "deck to paste to study, end to end in the browser",
+      "generatedBy": "built"
+    },
+    "tests/perf/cards-study.perf.test.ts": {
+      "hash": "",
+      "covers": [
+        "F14"
+      ],
+      "type": "perf",
+      "components": [
+        "C7"
+      ],
+      "note": "study queue opens under 300ms p95 across 10,000 cards; deck counts in one query",
+      "generatedBy": "built"
+    }
+  },
+  "bugs": {},
+  "hardening": {},
+  "delivery": null
+}

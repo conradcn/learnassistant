@@ -1,0 +1,81 @@
+# The one command a new user runs:
+#
+#   cp .env.example .env     # optional — every value in it is already the default
+#   docker compose up
+#
+# Then open http://localhost:31544.
+#
+# Everything the app is configured with is read from .env, so a rebuild changes nothing
+# about your setup and ./data keeps your courses, uploads and logs across one.
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Off by default. `docker compose up` gives you an app with no claude CLI in it;
+        # see README, "The claude CLI in a container", before turning this on.
+        INSTALL_CLAUDE_CLI: ${LA_INSTALL_CLAUDE_CLI:-false}
+    image: learn-assistant:local
+    container_name: learn-assistant
+    restart: unless-stopped
+    init: false
+
+    # WHY the same number on both sides: the app only answers requests whose Host header
+    # is localhost, 127.0.0.1 or [::1] on its own port. Publishing 8080:31544 would make
+    # every request arrive with the wrong port in Host and be refused as unauthorised. Same for a
+    # reverse proxy in front; see docs/TROUBLESHOOTING.md, "The app is reachable on a different
+    # port than it is configured for".
+    ports:
+      - "${PORT:-31544}:${PORT:-31544}"
+
+    # Your .env, verbatim: provider choice, API keys, models, concurrency. Keys reach the
+    # process environment and nowhere else — they are never baked into the image.
+    env_file:
+      - path: .env
+        required: false
+
+    environment:
+      PORT: ${PORT:-31544}
+      LA_DATA_ROOT: /app/data
+      # Empty is "not set" everywhere in this app, so an unset variable here changes
+      # nothing — it just lets `LA_PROVIDER=ollama docker compose up` work without a .env.
+      LA_PROVIDER: ${LA_PROVIDER:-}
+      # A provider "on 127.0.0.1" means the container's own loopback, where nothing is
+      # listening. host.docker.internal is the host as seen from in here; extra_hosts
+      # below is what makes that name resolve on Linux as well as Docker Desktop.
+      #
+      # The host-side server must also be listening on more than loopback. For Ollama that
+      # is OLLAMA_HOST=0.0.0.0 before `ollama serve` (on Linux with systemd:
+      # `systemctl edit ollama` -> Environment="OLLAMA_HOST=0.0.0.0:11434").
+      LA_OLLAMA_URL: ${LA_OLLAMA_URL:-http://host.docker.internal:11434}
+      LA_LLAMA_URL: ${LA_LLAMA_URL:-http://host.docker.internal:18080}
+      LA_OPENAI_COMPAT_URL: ${LA_OPENAI_COMPAT_URL:-http://host.docker.internal:1234/v1}
+      LA_CHAT_LLAMA_URL: ${LA_CHAT_LLAMA_URL:-http://host.docker.internal:18081}
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # Runs as uid 1000 (`node` in the base image), which is what a stock linux desktop
+    # account already is. If `id -u` says otherwise on your machine, set LA_UID/LA_GID in
+    # .env or ./data will be read-only to the container and it will say so and stop.
+    # Docker Desktop on Windows and macOS ignores ownership on bind mounts; leave these be.
+    user: "${LA_UID:-1000}:${LA_GID:-1000}"
+
+    volumes:
+      # Everything that must outlive the container: learn.db, the authored module
+      # directories under topics/, uploaded material, and the NDJSON logs.
+      - ${LA_DATA_DIR:-./data}:/app/data
+      # The claude CLI's credential directory. The default is a named volume — an empty
+      # one, which is the honest state of a container nobody has signed in. Point
+      # LA_CLAUDE_HOME at your host's ~/.claude to share the real one; README explains
+      # what that does and does not buy you.
+      - ${LA_CLAUDE_HOME:-learn-assistant-claude-home}:/home/node/.claude
+
+    security_opt:
+      - no-new-privileges:true
+
+    stop_grace_period: 20s
+
+volumes:
+  learn-assistant-claude-home:

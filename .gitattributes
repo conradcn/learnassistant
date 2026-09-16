@@ -1,0 +1,14 @@
+# WHY this file exists: this repo is developed on Windows with core.autocrlf=true, so
+# without it every checkout rewrites LF to CRLF. `start.sh` is executed by `sh`, which
+# treats a trailing CR as part of the shebang and the arguments — a fresh clone on Linux
+# would fail to launch with a "bad interpreter" error that names a path that looks right.
+# The startup smoke test asserts start.sh has no CRLF; this is what makes that true after
+# a clone rather than only in the working tree it was authored in.
+* text=auto
+*.sh text eol=lf
+# Same reason, for the two files a linux container reads: a CR in the entrypoint is a
+# bad interpreter, and a CR in a Dockerfile RUN line ends up inside the command.
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+*.mjs text eol=lf
+*.bat text eol=crlf

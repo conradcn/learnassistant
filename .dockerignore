@@ -1,0 +1,71 @@
+# The build context is source only. Anything the image builds for itself, anything
+# holding learner data, and anything platform-specific stays out — a host-built
+# node_modules/ carries better-sqlite3 compiled for the host, which is the one thing
+# that must not reach a linux image.
+
+# built for the host, rebuilt in the image
+node_modules/
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# learner data and logs (PII) — the container gets an empty ./data bind mount instead
+data/
+.e2e-data/
+.e2e-real-data/
+.e2e-real/
+.smoke-data/
+.docker-smoke-data/
+logs/
+*.ndjson
+*.db
+*.db-wal
+*.db-shm
+*.db.prev
+*.db.bak-*
+*.db.pre-*
+.scrub-salt
+.session-token
+
+# detached server launch logs
+server.log
+server.err.log
+
+# secrets — configuration reaches the container through env_file, never the image
+.env
+.env.*
+!.env.example
+
+# test output and tooling workspaces
+test-results/
+playwright-report/
+e2e/perf/timeseries/
+e2e/reachability/
+e2e/.report/
+e2e/.seed.json
+.buildassistant/
+.fractal/history/
+.fractal/ui-history/
+.fractal/delivery/
+.tmp-refactor/
+
+# vcs, editor, OS
+.git/
+.github/
+.gitignore
+.gitattributes
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.claude/
+
+# docs and container plumbing the build itself does not read
+*.md
+!README.md
+docker-compose.yml
+Dockerfile
+.dockerignore

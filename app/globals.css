@@ -1,0 +1,1150 @@
+:root {
+  color-scheme: dark;
+  /* A learning app is somewhere you sit for an hour, so the ground is a soft blue-slate
+     rather than near-black: the same contrast, less glare. */
+  --bg: #0e1219;
+  --panel: #171d27;
+  /* One step above --panel, for the inset surfaces that sit inside a card. */
+  --panel-sunk: #10151d;
+  /* WHY: --line is decoration, not a control boundary -- 1.29:1 on --panel, 1.44:1 on
+     --bg, 1.40:1 on --panel-sunk. Never use it to draw the edge of a button or a field. */
+  --line: #232b38;
+  /* WHY (WCAG 1.4.11): control boundaries need >=3:1 against every surface they touch,
+     including the control's own fill. #7a8496 clears all of them: 4.49:1 on --panel,
+     4.98:1 on --bg, 4.85:1 on --panel-sunk, 3.83:1 on the #222a36 button fill and
+     3.38:1 on the #2a3341 hover fill. The obvious #6b7280 does not -- it is only
+     2.99:1 against the button fill. See tests/ui/control-contrast.test.ts. */
+  --line-strong: #7a8496;
+  --text: #e9eef5;
+  --muted: #98a2b3;
+  --accent: #6ee7b7;
+  /* The accent at low alpha, for tinted fills that must not compete with the text on them. */
+  --accent-soft: rgba(110, 231, 183, 0.12);
+  /* A second hue so "look at this" and "do this" are not the same colour everywhere. */
+  --accent-2: #a78bfa;
+  --accent-2-soft: rgba(167, 139, 250, 0.14);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.13);
+  --danger: #fb7185;
+  --danger-soft: rgba(251, 113, 133, 0.13);
+  --radius: 14px;
+  --radius-sm: 10px;
+  /* Friendly depth: cards lift off the page instead of being drawn onto it. */
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* A wash of colour behind the whole app so the page reads as a place, not a document.
+   Fixed and non-interactive, so it costs nothing on scroll. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(70ch 40ch at 15% -10%, rgba(110, 231, 183, 0.07), transparent 70%),
+    radial-gradient(60ch 40ch at 95% 0%, rgba(167, 139, 250, 0.07), transparent 70%);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* WHY (F2): a secondary link still has to look clickable. Muting it to the body colour
+   made "Skip to the questions instead" read as one more line of card metadata, so the
+   underline carries the affordance the colour no longer does. */
+a.la-quiet-link {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a.la-quiet-link:hover,
+a.la-quiet-link:focus-visible {
+  color: var(--text);
+}
+
+.la-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  row-gap: 4px;
+  /* WHY: shares the content column's edges with .la-main so the nav lines up
+     with the page below it at wide viewports. */
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 10px 16px;
+}
+
+/* WHY: at 375px a multi-word destination must wrap as a unit, not mid-phrase. */
+.la-nav a {
+  white-space: nowrap;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 7px 12px;
+  border-radius: 999px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.la-nav a:hover,
+.la-nav a:focus-visible {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  text-decoration: none;
+}
+
+/* A page title and the one action that belongs to it, on one line — so the action does not
+   need a paragraph of its own and the title does not need a sentence explaining it. */
+.la-page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 4px;
+}
+
+.la-page-head h1 {
+  margin: 0;
+}
+
+.la-main {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 8px 16px 64px;
+}
+
+.la-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid var(--line);
+  /* WHY: the header has two states of different natural height — one line while the
+     health check is in flight, a badge/counter/button row once it answers — and every
+     link in this app is a full page load, so the shorter one paints first on every
+     navigation and drops the whole page ~14px when it resolves. Reserving the resolved
+     row's height means the answer lands in a box that was already the right size.
+     56px is the measured height of the resolved row (badge + counter + Stop button)
+     at the default font size, not a guess — 30px only reserved the bare text line and
+     three delivery critics independently caught the remaining ~14px jump. The button's
+     min-height grew from 34px to 38px in the restyle, so the reserved row grew with it. */
+  min-height: 60px;
+  padding: 10px 0 14px;
+}
+
+/* A page title carrying a status pill is a heading first — the shared .la-header rule
+   would otherwise put a rule under it and reserve the toolbar's height beneath it. */
+h1.la-header,
+h2.la-header {
+  border-bottom: none;
+  min-height: 0;
+  padding: 4px 0 0;
+}
+
+.la-badge {
+  display: inline-block;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 3px 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  /* WHY: a badge beside a heading inherits the heading's weight and size otherwise,
+     and stops reading as a status pill at all. */
+  line-height: 1.5;
+  vertical-align: middle;
+}
+
+/* WHY the background moves with the text colour: .la-error only recolours the words, and
+   danger-red type on the accent-tinted pill read as a decoration rather than a warning. */
+.la-badge.la-error {
+  background: var(--danger-soft, rgba(248, 113, 113, 0.14));
+  color: var(--danger);
+}
+
+.la-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 18px;
+  margin: 14px 0;
+}
+
+/* WHY: a card whose every line was its own <p> in muted grey was four lines tall for two
+   facts, and the stack read as body copy rather than as the label strip it is. Joined into
+   one wrapping row with dot separators, so the card is title / facts / action. */
+.la-meta {
+  display: flex;
+  flex-wrap: wrap;
+  /* WHY spacing and not a '·' separator: the facts wrap at narrow widths, and a
+     separator drawn with ::before leads the wrapped line with a dangling dot. */
+  gap: 2px 16px;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+/* WHY: with every card title rendered in the accent, the accent stopped meaning "this is
+   the action" — a page of eight lessons was eight green headings and one green button.
+   The title carries its link affordance on hover instead. */
+.la-card h2 > a,
+.la-card h3 > a {
+  color: var(--text);
+}
+
+.la-card h2 > a:hover,
+.la-card h3 > a:hover,
+.la-card h2 > a:focus-visible,
+.la-card h3 > a:focus-visible {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* WHY: the settings page is one card holding several unrelated groups, and a bare <h2>
+   between two paragraphs gave no sign that a new group had started. */
+.la-card h2 ~ h2 {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.la-card h3 {
+  margin-top: 22px;
+}
+
+/* Section headings above a list of cards need room to separate one group from the last. */
+.la-main section > h2 {
+  margin: 28px 0 4px;
+}
+
+/* Only a card that is a link to somewhere responds to the pointer — a static panel
+   that lifts on hover promises a click it does not have. */
+.la-card:has(h2 > a):hover,
+.la-card:has(h3 > a):hover,
+.la-card:has(h1 > a):hover {
+  border-color: var(--line-strong);
+}
+
+/* A card's own padding already closes it off; the last paragraph's margin added a second
+   gap, so every card carried an empty band along its bottom edge. */
+.la-card > *:last-child {
+  margin-bottom: 0;
+}
+
+/* WHY: deleting a subject is a door that has to exist, not one to advertise. Given the
+   full card treatment it carried the same visual weight as the lessons above it and
+   closed every subject page on its most destructive action. */
+[data-testid='remove-topic-card'] {
+  background: none;
+  box-shadow: none;
+  border-style: dashed;
+  margin-top: 32px;
+}
+
+[data-testid='remove-topic-card'] h2 {
+  font-size: 16px;
+  color: var(--muted);
+}
+
+[data-testid='remove-topic-card'] button {
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
+
+[data-testid='remove-topic-card'] button:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+/* WHY: the final project is the destination the whole subject builds towards, and it was
+   a bare line of link text sitting between two cards. */
+[data-testid='capstone-link'] {
+  display: block;
+  margin: 14px 0;
+  padding: 16px 18px;
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  border-radius: var(--radius);
+  background: var(--accent-2-soft);
+  color: var(--text);
+  font-weight: 600;
+}
+
+[data-testid='capstone-link']:hover {
+  border-color: var(--accent-2);
+  text-decoration: none;
+}
+
+.la-row {
+  display: flex;
+  /* WHY: at 8px two adjacent links read as one run-on phrase rather than two destinations. */
+  gap: 8px 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* How far through a subject you are, as a shape rather than three numbers to add up.
+   Decorative by design — the counts beneath it carry the same fact in words. */
+.la-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--panel-sunk);
+  overflow: hidden;
+  margin: 4px 0 10px;
+}
+
+.la-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  /* A zero-width bar still has to be visible as an empty track, not a missing one. */
+  min-width: 0;
+}
+
+.la-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.la-muted {
+  color: var(--muted);
+}
+
+.la-warn {
+  color: var(--warn);
+}
+
+.la-error,
+.la-degraded {
+  color: var(--danger);
+}
+
+.la-empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+button {
+  font: inherit;
+  font-weight: 500;
+  color: var(--text);
+  background: #222a36;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 7px 16px;
+  min-height: 38px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+button:hover {
+  border-color: var(--accent);
+  background: #2a3341;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+/* WHY: a two-state control whose two states render identically tells the user nothing. */
+button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+/* The one terminal action on a surface. */
+.la-primary {
+  background: linear-gradient(180deg, #86efc4, var(--accent));
+  border-color: var(--accent);
+  color: #06251a;
+  font-weight: 600;
+}
+
+.la-primary:hover {
+  background: linear-gradient(180deg, #a7f3d5, #86efc4);
+  border-color: #a7f3d5;
+}
+
+/* The stop control: the only destructive-adjacent affordance in the app. */
+.la-stop {
+  border-color: var(--danger);
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.la-stop:hover {
+  border-color: var(--danger);
+  background: #2a1a1a;
+}
+
+/* An anchor that is a peer action of the buttons beside it. */
+.la-btn-link {
+  display: inline-block;
+  color: var(--text);
+  background: #222a36;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.la-btn-link:hover {
+  border-color: var(--accent);
+  background: #2a3341;
+  text-decoration: none;
+}
+
+/* WHY: .la-btn-link is declared after .la-primary at equal specificity, so a link that is
+   the page's one terminal action ("Add a subject") had its accent fill overwritten by the
+   neutral one and shipped looking like every secondary control beside it. */
+.la-btn-link.la-primary {
+  background: linear-gradient(180deg, #86efc4, var(--accent));
+  border-color: var(--accent);
+  color: #06251a;
+  font-weight: 600;
+}
+
+.la-btn-link.la-primary:hover {
+  background: linear-gradient(180deg, #a7f3d5, #86efc4);
+  border-color: #a7f3d5;
+}
+
+/* WHY: no focus style existed at all — every control fell back to the UA ring
+   over a near-black background. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-sunk);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  /* Brighter than --line-strong so hover reads as a change, and still >=3:1 (6.11:1 on
+     --panel-sunk) so the boundary does not drop below the floor while pointing at it. */
+  border-color: #939cab;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+
+::placeholder {
+  /* Placeholder text carries real information here (the settings page uses one to say a
+     blank second key field inherits the first), so it is held to SC 1.4.3's 4.5:1 for
+     body text, not to the 3:1 non-text floor. 4.85:1 on --panel-sunk. */
+  color: #7a8496;
+}
+
+/* WHY: the shared rule above does not reach checkbox/radio, which fell back to
+   light-scheme OS widgets on a dark panel and read as disabled. */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+}
+
+/* WHY: forms were laid out entirely by the inline formatting context, so labels
+   wrapped around their own controls and submit buttons landed mid-sentence. */
+form {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+form > button,
+form > .la-primary {
+  align-self: flex-start;
+}
+
+label {
+  display: block;
+  margin: 0;
+}
+
+.la-row label,
+label.la-row {
+  display: flex;
+  /* WHY: the label's text is an anonymous flex item — letting the row wrap dropped it onto
+     its own line below the box at 375px instead of wrapping beside it. */
+  flex-wrap: nowrap;
+  /* WHY centre and not flex-start: the inputs grew taller in the restyle, which left every
+     label text pinned to the top edge of the box beside it — the settings rows read as two
+     misaligned columns rather than one control each. */
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+}
+
+/* A checkbox's label can run to two lines; its box still belongs on the first one. */
+label.la-row > input[type='checkbox'],
+label.la-row > input[type='radio'] {
+  align-self: center;
+}
+
+/* WHY: these inputs sit outside a <form>, so the width rule below never reached them and
+   each one sized itself to its own default — a column of boxes with ragged right edges. */
+/* WHY the shared max-width on the row and not on the box: the label text is an anonymous
+   flex item with no element to size, so the only way to line a column of these up is to
+   give every row the same total width and let the boxes end on one right edge. */
+label.la-row:has(> input[type='text']) {
+  max-width: 560px;
+}
+
+label.la-row > input[type='text'] {
+  flex: 1 1 220px;
+}
+
+.la-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+}
+
+form input:not([type='checkbox']):not([type='radio']),
+form select {
+  width: 100%;
+  max-width: 420px;
+}
+
+fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 0;
+}
+
+legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+
+/* A field's label is a quiet instruction above the control, not body copy. */
+.la-field > label,
+form > label {
+  color: var(--muted);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+pre,
+code {
+  font-family: ui-monospace, "Cascadia Code", "SF Mono", Menlo, monospace;
+  font-size: 0.92em;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--panel-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+h1 {
+  font-size: 28px;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  margin: 12px 0;
+}
+
+h2 {
+  font-size: 19px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  margin: 0 0 6px;
+}
+
+h3 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+
+/* A card's title is a heading in the document, not a headline on the page. */
+.la-card h1 {
+  font-size: 22px;
+}
+
+/* The lesson body is read, not scanned — it gets a narrower measure than the page. */
+p {
+  max-width: 72ch;
+}
+
+/* The anchoring question a whole subject hangs on — not an incidental caption. */
+.la-driving-question {
+  font-size: 17px;
+  font-style: italic;
+  color: var(--text);
+  border-left: 3px solid var(--accent);
+  padding: 2px 0 2px 14px;
+  margin: 10px 0 20px;
+}
+
+/* A count that sizes today's work. */
+.la-count {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 4px 0;
+}
+
+/* A whole-app failure is a state of the app, not one card inside a working one. */
+.la-recover {
+  min-height: 70vh;
+  display: grid;
+  place-items: center;
+}
+
+.la-recover .la-card {
+  max-width: 560px;
+}
+
+.la-recover h1 {
+  font-size: 26px;
+}
+
+/* WHY: .la-list drops the marker and the indent, so consecutive cards in a list would
+   otherwise collapse their margins into a single hairline gap. */
+.la-list > li + li {
+  margin-top: 0;
+}
+
+/* WHY: with the store down every other route answers 503, so the app-wide nav would offer
+   five ways back into the failure and compete with the one control that works. */
+body:has(.la-recover) .la-nav {
+  display: none;
+}
+
+/* WHY: progress and confirmation copy was sharing .la-error, so the moment a request went
+   through looked exactly like the moment one failed. */
+.la-notice {
+  color: var(--text);
+  border: 1px solid rgba(110, 231, 183, 0.3);
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  margin: 14px 0;
+}
+
+/* WHY: a disabled control kept its full-strength fill, so an in-flight primary button was
+   pixel-identical to a live one — the page said "getting your tutor ready" while the button
+   beside it still read as pressable. There was no :disabled rule anywhere before this. */
+button:disabled,
+button[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---- Lesson body blocks (F3) -------------------------------------------------
+   The body of a lesson alternates prose with something to look at or something to
+   do. These rules exist to make the alternation VISIBLE: an interactive block that
+   looks like the paragraph above it is skimmed past like the paragraph above it, so
+   each one gets its own inset panel and a coloured edge the eye can find while
+   scrolling. */
+
+[data-testid='lesson-blocks'] > * {
+  margin: 14px 0;
+}
+
+.la-figure {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-sunk);
+  overflow-x: auto;
+}
+
+/* Model SVGs are authored with a viewBox and no intrinsic size, so they are sized here
+   rather than trusting whatever dimensions came back. */
+.la-figure svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  color: var(--text);
+}
+
+.la-figure figcaption,
+.la-figure table {
+  margin-top: 8px;
+}
+
+/* WHY: an interactive block that looks like the paragraph above it is skimmed past like
+   the paragraph above it. The violet edge is the app's second hue, so "something to do"
+   is never confused with the mint used for "this went well". */
+.la-check,
+.la-reveal,
+.la-steps {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent-2);
+  border-radius: var(--radius);
+  background: var(--accent-2-soft);
+  padding: 16px;
+}
+
+.la-check-q,
+.la-steps-title {
+  font-weight: 600;
+  margin-top: 0;
+}
+
+.la-check-options {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.la-check-options button {
+  text-align: left;
+}
+
+/* WHY not colour alone (WCAG 1.4.1): the picked option also carries aria-pressed, and
+   the feedback below states in words which way it went. */
+.la-check-picked {
+  border-color: var(--accent);
+}
+
+.la-check-right {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+
+.la-check-wrong {
+  border-left: 3px solid var(--warn);
+  padding-left: 10px;
+}
+
+/* An answered check is a resolved block — the violet "your turn" tint stops applying
+   once the turn is over. */
+.la-check:has(.la-check-right) {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.la-check:has(.la-check-wrong) {
+  border-left-color: var(--warn);
+  background: var(--warn-soft);
+}
+
+.la-check-right p:first-child,
+.la-check-wrong p:first-child {
+  font-weight: 600;
+}
+
+.la-reveal-answer {
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}
+
+.la-steps-label {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+/* WHY: model prose is markdown, and until it had rules of its own every rendered block
+   inherited only the UA defaults — lists indented to the browser's 40px, headings sized
+   like page titles, and no separation between a paragraph and the list under it. The
+   result read as one wall of text whatever structure the model wrote. */
+.la-prose > *:first-child {
+  margin-top: 0;
+}
+
+.la-prose > *:last-child {
+  margin-bottom: 0;
+}
+
+.la-prose p {
+  margin: 0 0 12px;
+}
+
+.la-prose ul,
+.la-prose ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.la-prose li + li {
+  margin-top: 4px;
+}
+
+/* A heading inside a card is a signpost within the answer, not a title above it. */
+.la-prose h1,
+.la-prose h2,
+.la-prose h3,
+.la-prose h4 {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0;
+  margin: 18px 0 6px;
+}
+
+.la-prose blockquote {
+  margin: 12px 0;
+  padding: 2px 0 2px 14px;
+  border-left: 3px solid var(--line-strong);
+  color: var(--muted);
+}
+
+.la-prose pre {
+  margin: 12px 0;
+}
+
+/* Inline code has to read as code against body copy without becoming a second colour. */
+.la-prose :not(pre) > code {
+  background: var(--panel-sunk);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+/* WHY: passing a lesson used to render as one grey sentence in the same slot, weight and
+   colour as "keep going" — the app's only real milestone was typographically identical to
+   its non-events. This is the one card that leads with the accent, and it appears exactly
+   once, on the turn that passed. No score or streak lives in it; the app has no marks. */
+.la-celebrate {
+  border-color: var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), var(--panel) 55%);
+  animation: la-celebrate-in 420ms ease-out both;
+}
+
+.la-celebrate h2 {
+  color: var(--accent);
+  margin: 0 0 6px;
+}
+
+.la-celebrate-mark {
+  margin: 0 0 2px;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--accent);
+  animation: la-celebrate-mark 520ms ease-out 120ms both;
+}
+
+@keyframes la-celebrate-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes la-celebrate-mark {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-25deg);
+  }
+}
+
+/* A milestone is not worth motion sickness; the card still arrives, just without travel. */
+@media (prefers-reduced-motion: reduce) {
+  .la-celebrate,
+  .la-celebrate-mark {
+    animation: none;
+  }
+}
+
+/* ── The subject map (C10) ────────────────────────────────────────────────────
+   A top-down picture of the prerequisite graph: HTML boxes for the lessons, an SVG
+   layer underneath for the lines. Both share one pixel coordinate space computed in
+   src/ui/graph-map.ts, so the two layers cannot drift apart. */
+
+.la-map-card {
+  /* The panel is a picture, not a card of prose — a slightly sunk ground separates it
+     from the lesson cards below without another border. */
+  background: linear-gradient(180deg, var(--panel), var(--panel-sunk));
+}
+
+/* A quiet control that belongs to a heading rather than to the page: no filled button
+   chrome, so "Hide the map" does not read as the action of this screen. */
+.la-quiet-button {
+  margin-left: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.la-quiet-button:hover,
+.la-quiet-button:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* The map shrinks to fit the panel first (see fitScale in src/ui/graph-map.ts) and only
+   scrolls once shrinking any further would put the lesson titles below reading size —
+   an unreadable map is not a map. */
+.la-map-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 4px 0 8px;
+  /* WHY the fade: on a narrow screen the map is wider than the panel even at the floor,
+     and a box cut off dead straight at the edge reads as a rendering fault rather than
+     as something you can drag. Where the map does fit, the faded strip is empty ground
+     and nothing changes. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+
+/* Holds the space the scaled drawing really occupies. A transform does not change layout
+   size, so without this the panel reserved the unscaled height and closed on a band of
+   empty card. */
+.la-map-fit {
+  position: relative;
+  margin: 0 auto;
+}
+
+.la-map {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+}
+
+.la-map-edges {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.la-map-edge {
+  fill: none;
+  stroke: url(#la-map-edge);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* A line into a lesson that is not open yet is drawn as an intention, not a fact. */
+.la-map-edge-pending {
+  stroke: var(--line-strong);
+  stroke-dasharray: 4 6;
+  stroke-width: 1.5;
+}
+
+.la-map-nodes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.la-map-node {
+  position: absolute;
+}
+
+.la-map-node > a {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  height: 100%;
+  /* The box height is reserved by the geometry, so the padding here must leave room for
+     two clamped title lines plus the state line — a tighter inset clipped the second. */
+  padding: 8px 10px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  text-align: center;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.la-map-node > a:hover,
+.la-map-node > a:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.la-map-title {
+  /* Two lines and then an ellipsis: a box that grew to fit its title would break the
+     row the geometry already reserved space for. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.la-map-state {
+  color: var(--muted);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+
+/* Open now is the only group that gets colour — the picture should answer "where can I
+   go" before it answers anything else. */
+.la-map-node[data-group='open'] > a {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, var(--accent-soft), var(--panel));
+}
+
+.la-map-node[data-group='open'] .la-map-state {
+  color: var(--accent);
+}
+
+.la-map-node[data-group='done'] > a {
+  border-color: var(--line);
+  background: var(--panel-sunk);
+  color: var(--muted);
+}
+
+.la-map-node[data-group='later'] > a {
+  border-style: dashed;
+  border-color: var(--line);
+  background: none;
+  color: var(--muted);
+}
+
+.la-map-key {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.la-map-swatch {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+
+.la-map-swatch[data-group='open'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.la-map-swatch[data-group='done'] {
+  border-color: var(--line);
+  background: var(--panel-sunk);
+}
+
+.la-map-swatch[data-group='later'] {
+  border-style: dashed;
+  border-color: var(--line);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .la-map-node > a {
+    transition: none;
+  }
+  .la-map-node > a:hover,
+  .la-map-node > a:focus-visible {
+    transform: none;
+  }
+}
+
+.la-map-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A display equation is the one piece of lesson content with no upper width: an aligned
+   block can run wider than the 940px column. Without this it widens the document and the
+   whole page scrolls sideways, taking the nav and every card with it, so the equation
+   scrolls inside its own box instead — the same treatment .la-figure gets.
+
+   The padding is load-bearing: overflow-x makes the box a scroll container in both axes,
+   so without it the baseline and superscripts KaTeX draws past its line box get clipped.
+   overflow-y: hidden then keeps that room from turning into a second scrollbar. */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 0;
+  /* A scroller only a mouse can reach is unreadable to a keyboard-only learner; the
+     element carries tabindex="0" (src/ui/math.ts), and this shows where the focus is. */
+  border-radius: var(--radius);
+}
+
+.katex-display:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Off screen for the eye, present for a screen reader. Used by live regions that must
+   exist before they have anything to say, and so cannot be `display: none`. */
+.la-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
