@@ -165,7 +165,20 @@ export default function CapstonePage({ params }: { params: Promise<{ id: string 
           <p className="la-row">
             <Link href={`/topics/${view.topic.id}`}>Back to the whole subject</Link>
           </p>
-          {session === null ? (
+          {view.node !== null && view.node.content === null ? (
+            // WHY (F13): the tutor proposes the project. Until the brief is written there is
+            // nothing to build against, so the page says so instead of opening a review that
+            // asks for "what you built" against a bare title.
+            <>
+              <h1>{view.node.title}</h1>
+              <section className="la-card" data-testid="capstone-unwritten">
+                <p>
+                  Your tutor has not set this project yet. It is written with the next lessons for
+                  this subject, and it will be here once they are.
+                </p>
+              </section>
+            </>
+          ) : session === null ? (
             <>
               <h1>{view.node === null ? 'Your final project' : view.node.title}</h1>
               <CapstoneBrief topic={view.topic} node={view.node} />

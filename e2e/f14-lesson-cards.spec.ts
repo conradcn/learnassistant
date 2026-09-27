@@ -4,20 +4,19 @@
  * on the learner's own shelf once they are.
  */
 import { test, expect } from './fixtures';
-import { SUBJECT_A } from './seed';
+import { pastWarmUp } from './helpers';
+import { A_OPEN_1, A_OPEN_2 } from './seed';
 
+// WHY by id rather than through the map: the suite shares one seed and runs in file order,
+// so by now f04 has finished one of these lessons (it is no longer an open node) and an f12
+// side trip also mentions "Entropy". What is under test is the card pack, not the map.
 async function openLessonPastTheWarmUp(
   page: import('@playwright/test').Page,
-  clickTo: (a: Promise<unknown>, r?: RegExp | string) => Promise<void>,
-  title: string,
+  enter: (path: string) => Promise<void>,
+  id: string,
 ): Promise<void> {
-  await clickTo(page.getByRole('link', { name: SUBJECT_A }).click(), /\/topics\/t_[A-Za-z0-9]{16}$/);
-  await clickTo(
-    page.getByTestId('graph-open-node').filter({ hasText: title }).getByTestId('open-module').click(),
-    /\/modules\/m_[A-Za-z0-9]{16}$/,
-  );
-  await page.getByTestId('warm-up-skip').click();
-  await expect(page.getByTestId('explanation')).toBeVisible();
+  await enter(`/modules/${id}`);
+  await pastWarmUp(page);
 }
 
 test('a lesson offers its cards and puts them on the shelf when the learner asks', async ({
@@ -25,8 +24,7 @@ test('a lesson offers its cards and puts them on the shelf when the learner asks
   enter,
   clickTo,
 }) => {
-  await enter('/');
-  await openLessonPastTheWarmUp(page, clickTo, 'Entropy');
+  await openLessonPastTheWarmUp(page, enter, A_OPEN_1);
 
   const pack = page.getByTestId('card-pack');
   await expect(pack).toBeVisible();
@@ -47,13 +45,8 @@ test('a lesson offers its cards and puts them on the shelf when the learner asks
   await expect(page.getByTestId('card-list')).toContainText('Entropy');
 });
 
-test('reopening the lesson remembers that the pack was already taken', async ({
-  page,
-  enter,
-  clickTo,
-}) => {
-  await enter('/');
-  await openLessonPastTheWarmUp(page, clickTo, 'Codes and code lengths');
+test('reopening the lesson remembers that the pack was already taken', async ({ page, enter }) => {
+  await openLessonPastTheWarmUp(page, enter, A_OPEN_2);
   await page.getByTestId('add-card-pack').click();
   await expect(page.getByTestId('card-pack-message')).toContainText(/added/i);
 

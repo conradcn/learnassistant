@@ -24,6 +24,9 @@ export async function sendChat(page: Page, text: string, confidence?: 1 | 2 | 3 
  */
 export async function pastWarmUp(page: Page): Promise<void> {
   const skip = page.getByTestId('warm-up-skip');
+  // Wait for the page to settle on one or the other before deciding: an immediate
+  // isVisible() can run before either has rendered and wrongly skip nothing.
+  await expect(skip.or(page.getByTestId('explanation')).first()).toBeVisible();
   if (await skip.isVisible()) await skip.click();
   await expect(page.getByTestId('explanation')).toBeVisible();
 }

@@ -197,14 +197,17 @@ describe('source extraction', () => {
     const docx = docxOfParts(Array.from({ length: 32 }, (_, i) => fatPart(`word/header${i + 1}.xml`, 6)));
     expect(docx.byteLength).toBeLessThan(MAX_SOURCE_BYTES);
 
+    // WHY external and not rss: inflated parts are Buffers, which live outside the JS heap
+    // and are counted here. RSS also carries whatever the allocator has not handed back,
+    // which on Node 20 alone read as the full 192 MB with the budget working.
     global.gc?.();
-    const before = process.memoryUsage().rss;
+    const before = process.memoryUsage().external;
     const outcome = await extractSource(
       docx,
       'syllabus.docx',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     );
-    const grew = process.memoryUsage().rss - before;
+    const grew = process.memoryUsage().external - before;
 
     expect(outcome.ok).toBe(false);
     if (outcome.ok) return;

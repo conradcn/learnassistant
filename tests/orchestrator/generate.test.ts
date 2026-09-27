@@ -19,6 +19,7 @@ import { createOrchestrator, type Orchestrator } from '@/orchestrator/engine';
 import { planFor } from '@/orchestrator/plan';
 import { MAX_PREP_MODULES, prepWindow } from '@/orchestrator/prep-window';
 import { readTopicState } from '@/orchestrator/topic-state';
+import { TUTOR_PROPOSES_OBJECTIVE } from '@/orchestrator/capstone-spec';
 import { findCycle, entryModulesOf, unreachableFrom } from '@/orchestrator/discontinuity';
 
 // WHY this subject rather than the shared example intake: these paths are about what one
@@ -174,6 +175,32 @@ describe('F2 happy path: a branching graph generates end to end', () => {
     expect(drivingQuestion.length).toBeGreaterThan(0);
     expect(content.explanation.markdown).toContain(drivingQuestion);
     expect(content.explanation.markdown).toContain(intake.purpose);
+  });
+
+  it('asks the capstone session to propose the project itself, and keeps the one it proposes', async () => {
+    const plan = planFor(intake);
+    const prompts: string[] = [];
+    const respond = makeResponder('wide', plan.estimatedModules);
+    seenKinds = [];
+    runner = new SessionRunner({
+      transport: new KindTransport({
+        responder: (kind, prompt) => {
+          if (kind === 'capstone-spec') prompts.push(prompt);
+          return respond(kind);
+        },
+      }),
+    });
+    orchestrator = createOrchestrator({ store, runner, dataRoot });
+    const topic = store.topics.create(intake);
+    const { graph } = await generate(topic);
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain(TUTOR_PROPOSES_OBJECTIVE);
+    // 'tie' is too vague a purpose to build against, and the session was asked for a
+    // synthesis problem instead — the problem it wrote is the brief, not the template.
+    const content = moduleContentSchema.parse(graph.nodes.find((n) => n.kind === 'capstone')?.content);
+    if (content.explanation.kind !== 'text') throw new Error('capstone explanation must be text');
+    expect(content.explanation.markdown).toContain('Build the thing and justify every choice.');
   });
 });
 

@@ -19,6 +19,18 @@ export const capstoneOutputSchema = z.object({
   passCriteria: z.array(z.string().max(500)).max(20).optional(),
 });
 
+// WHY (F13): the tutor proposes the project. A brief that leaves the learner to pick the
+// case, find the sources, or invent the problem hands them the hardest part of the design
+// before they have been taught enough to judge it — and a project they invented cannot be
+// checked against anything the course set. What is left to the learner is the building:
+// design decisions inside a problem the brief has already fixed.
+export const TUTOR_PROPOSES_OBJECTIVE =
+  'Propose ONE concrete project yourself and fix everything it is about: the scenario, the givens ' +
+  '(the case, data, system, documents or figures it works on, written into the brief) and exactly ' +
+  'what gets built. Never leave the learner to invent the project, choose its subject or case, or go ' +
+  'and find the sources it is about. The only choices left to them are design decisions inside the ' +
+  'problem you set, and any options you offer are ones you wrote out in full.';
+
 // WHY (F13 path): a purpose too vague to build against falls back to a synthesis
 // design problem spanning the topic's modules, rather than producing a capstone
 // that references nothing.
@@ -33,14 +45,17 @@ export function capstoneLeafPrereqs(graph: ModuleGraph, capstoneId: ModuleId): M
   return leaves.length > 0 ? leaves : nonCapstone.map((n) => n.id);
 }
 
+// WHY it is the driving question and not "a problem in <subject>": this is the brief used
+// when no session wrote one, and it still has to be the tutor's project. The one problem
+// this course has already posed is its driving question, so that is the problem.
 export function synthesisSpec(topic: Topic, drivingQuestion: string, graph: ModuleGraph): string {
   const titles = graph.nodes.filter((n) => n.kind !== 'capstone').map((n) => n.title);
   return [
     `Driving question: ${drivingQuestion}`,
     `Your stated purpose: ${topic.purpose.trim() || '(you did not say yet — this project spans the whole topic instead)'}`,
     '',
-    `Design and fully specify a solution to a problem in ${topic.subject} that only works if you use ideas from every lesson below.`,
-    'Hand in the design, the reasoning behind each choice, and what you would measure to know it worked.',
+    `Your project is to answer the driving question in full, as a worked explanation of ${topic.subject} that someone else could follow and check.`,
+    'Build the answer out of the lessons below, in order: for each one, write the step of the answer it supplies and the reasoning behind it, then say what you would measure or check to know the whole answer holds.',
     '',
     ...titles.map((t) => `- ${t}`),
   ].join('\n');
@@ -93,6 +108,7 @@ export async function authorCapstoneSpec(
     buildable
       ? `Specify an artefact the learner builds that serves their purpose: ${topic.purpose}`
       : 'The learner did not state a concrete purpose — specify a synthesis design problem spanning every module instead.',
+    TUTOR_PROPOSES_OBJECTIVE,
   ];
   // The project is the thing the course was for, so it is written against the material
   // the learner brought as much as any lesson is.
@@ -131,8 +147,11 @@ export async function authorCapstoneSpec(
   }
 
   const parsed = capstoneOutputSchema.safeParse(outcome.output);
+  // WHY the session's brief is kept even for a vague purpose: the objectives above already
+  // asked it for the synthesis problem in that case, and a problem it wrote against the
+  // course is more concrete than the template. The template is for when nothing usable came back.
   const usedSynthesisFallback = !buildable || !parsed.success;
-  const specBody = parsed.success && buildable ? parsed.data.spec : synthesisSpec(topic, drivingQuestion, graph);
+  const specBody = parsed.success ? parsed.data.spec : synthesisSpec(topic, drivingQuestion, graph);
   // WHY (F13 AC): the driving question and the learner's purpose are prepended
   // by us, so the spec always references them even if the model omitted them.
   const spec = [

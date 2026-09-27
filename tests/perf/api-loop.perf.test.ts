@@ -92,6 +92,9 @@ async function measure(probe: Probe): Promise<{ durations: number[]; gaps: numbe
       await res.arrayBuffer();
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
+    // WHY: a fast runner can finish every sample in fewer ticks than it takes to judge the
+    // heartbeat. Waiting out the rest is not blocking, so it cannot hide a route that is.
+    while (gaps.length <= SAMPLES / 2) await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_MS));
   } finally {
     clearInterval(heartbeat);
   }

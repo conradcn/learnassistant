@@ -115,7 +115,7 @@ describe('F13 path: a purpose too vague for an authentic build', () => {
     });
 
     const session = h.engine.open('capstone', { kind: 'capstone', topicId: topic.id });
-    expect(session.turns[0].text).toContain('Design and fully specify a solution');
+    expect(session.turns[0].text).toContain('Your project is to answer the driving question in full');
     expect(session.turns[0].text).toContain('How small can a message get?');
 
     h.respondWith(() => evaluatorOutput({ reply: 'That design holds together.', mode: 'verdict', outcome: 'pass' }));
@@ -144,5 +144,67 @@ describe('F13 path: attempted past the advisory with prerequisites incomplete', 
     // the topic is still not done: the lessons themselves were never passed
     expect(h.engine.topicIsDone(topic.id)).toBe(false);
     expect(capstoneRounds(h.store.evals.get(sessionIdFor('capstone', { kind: 'capstone', topicId: topic.id }))!)).toHaveLength(1);
+  });
+});
+
+describe('F13: the tutor proposes the project', () => {
+  function unwriteCapstone(topicId: Parameters<typeof h.store.modules.graph>[0]): void {
+    const graph = h.store.modules.graph(topicId);
+    h.store.modules.upsertGraph({
+      ...graph,
+      nodes: graph.nodes.map((n) => (n.kind === 'capstone' ? { ...n, content: null } : n)),
+    });
+  }
+
+  it('will not open a review while the project has no brief to build against', async () => {
+    const { topic } = seedTopic(h.store, { withCapstone: true });
+    unwriteCapstone(topic.id);
+
+    expect(() => h.engine.open('capstone', { kind: 'capstone', topicId: topic.id })).toThrow(
+      expect.objectContaining({ code: 'conflict' }),
+    );
+    await expect(h.engine.submitCapstone(topic.id, ARTIFACT)).rejects.toMatchObject({ code: 'conflict' });
+    expect(h.prompts).toHaveLength(0);
+  });
+
+  it('brings an untouched review up to date with a brief written after it was opened', () => {
+    const { topic } = seedTopic(h.store, { withCapstone: true, capstoneSpec: 'The old brief.' });
+    const target = { kind: 'capstone' as const, topicId: topic.id };
+    expect(h.engine.open('capstone', target).turns[0].text).toContain('The old brief.');
+
+    const graph = h.store.modules.graph(topic.id);
+    h.store.modules.upsertGraph({
+      ...graph,
+      nodes: graph.nodes.map((n) =>
+        n.kind === 'capstone' && n.content !== null
+          ? { ...n, content: { ...n.content, explanation: { kind: 'text' as const, markdown: 'The tutor’s brief.' } } }
+          : n,
+      ),
+    });
+
+    const peeked = h.engine.peek('capstone', target);
+    expect(peeked?.turns).toHaveLength(1);
+    expect(peeked?.turns[0].text).toContain('The tutor’s brief.');
+    expect(peeked?.turns[0].text).not.toContain('The old brief.');
+  });
+
+  it('leaves a review alone once something has been handed in against the old brief', async () => {
+    const { topic } = seedTopic(h.store, { withCapstone: true, capstoneSpec: 'The old brief.' });
+    h.respondWith(() => evaluatorOutput({ reply: 'Measure it.', mode: 'question', outcome: 'continue' }));
+    await h.engine.submitCapstone(topic.id, ARTIFACT);
+
+    const graph = h.store.modules.graph(topic.id);
+    h.store.modules.upsertGraph({
+      ...graph,
+      nodes: graph.nodes.map((n) =>
+        n.kind === 'capstone' && n.content !== null
+          ? { ...n, content: { ...n.content, explanation: { kind: 'text' as const, markdown: 'A new brief.' } } }
+          : n,
+      ),
+    });
+
+    const peeked = h.engine.peek('capstone', { kind: 'capstone', topicId: topic.id });
+    expect(peeked?.turns[0].text).toContain('The old brief.');
+    expect(peeked?.turns.some((t) => t.role === 'learner')).toBe(true);
   });
 });

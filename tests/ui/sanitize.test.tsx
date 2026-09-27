@@ -108,6 +108,26 @@ describe('svg sanitizer', () => {
     expect(out).toContain('&amp;');
   });
 
+  it('decodes the entities a model writes into diagram labels', () => {
+    const out = sanitizeSvg('<svg><text x="1">input &rarr; hidden &#8212; output &#x3B8;</text></svg>');
+    expect(out).toContain('input → hidden — output θ');
+    expect(out).not.toContain('&rarr;');
+    expect(out).not.toContain('&#8212;');
+  });
+
+  it('still escapes what an entity decodes into', () => {
+    const out = sanitizeSvg('<svg><text x="1">&lt;script&gt;alert(1)&lt;/script&gt;</text></svg>');
+    expect(out).not.toContain('<script>');
+    expect(out).toContain('&lt;script&gt;');
+  });
+
+  it('decodes entities in attribute values without trusting the decoded scheme', () => {
+    const out = sanitizeSvg('<svg><text font-family="Fira &amp; Co" x="1">a</text></svg>');
+    expect(out).toContain('font-family="Fira &amp; Co"');
+    const attack = sanitizeSvg('<svg><rect fill="&#106;avascript:alert(1)" width="4" /></svg>');
+    expect(attack).not.toContain('avascript');
+  });
+
   it('keeps a legitimate drawing intact and mounts it without a script node', () => {
     const out = sanitizeSvg('<svg viewBox="0 0 4 4"><path d="M0 0 L4 4" stroke="#fff"/></svg>');
     expect(out).toContain('viewBox="0 0 4 4"');
@@ -229,7 +249,10 @@ describe('svg allowlist guard', () => {
     ['url(', 'url(#steal)'],
     ['//', '//evil.example/x'],
     ['<', 'a<script>b'],
-    ['&#', 'a&#106;b'],
+    // Entities are decoded before these checks, so an encoded scheme is caught as the
+    // scheme it becomes; a doubly-encoded one is left holding a literal `&#` and rejected.
+    ['an encoded scheme', '&#106;avascript:alert(1)'],
+    ['a doubly encoded scheme', '&amp;#106;avascript:alert(1)'],
     ['https://', 'https://evil.example/x'],
     ['http://', 'http://evil.example/x'],
   ])('rejects an allowlisted attribute whose value contains %s', (_label, value) => {

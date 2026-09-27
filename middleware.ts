@@ -38,6 +38,8 @@ export const runtime = 'nodejs';
 
 export const config = {
   // Documents only. Files under /_next/static are immutable and served straight from disk;
-  // running middleware over every one of them buys nothing and costs latency.
-  matcher: ['/((?!api/|_next/static/|_next/image/|favicon.ico).*)'],
+  // running middleware over every one of them buys nothing and costs latency. /viz-frame is
+  // the interactive-block host and carries its own, deliberately different, policy — two CSP
+  // headers are both enforced, so this one would silently cancel it.
+  matcher: ['/((?!api/|_next/static/|_next/image/|favicon.ico|viz-frame).*)'],
 };

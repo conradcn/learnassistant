@@ -70,3 +70,47 @@ export function newNonce(): string {
   for (const b of bytes) binary += String.fromCharCode(b);
   return btoa(binary);
 }
+
+/**
+ * Where an interactive block may load a library from. Named rather than `https:` so the set of
+ * third parties a learner's browser will talk to is a list someone can read — and so the
+ * authoring prompt can quote it, instead of the model inventing a CDN that does not exist.
+ */
+export const VIZ_SCRIPT_HOSTS: readonly string[] = [
+  'https://cdn.jsdelivr.net',
+  'https://unpkg.com',
+  'https://cdnjs.cloudflare.com',
+];
+
+/**
+ * The policy for the frame an interactive lesson block runs in (F3, `/viz-frame`).
+ *
+ * WHY it is the one place this app allows arbitrary script: an `interactive` block is
+ * model-written HTML and JavaScript, run as written, by decision — a simulation, a draggable
+ * construction or an animation cannot be expressed as data, and the plot's formula language
+ * was the ceiling of what a declarative block can do. What keeps that from reaching the
+ * learner's data is not this policy but the frame's `sandbox="allow-scripts"` WITHOUT
+ * `allow-same-origin`: the document runs in an opaque origin, so it cannot read the session
+ * credential in the parent's `<meta>`, cannot call the API with the parent's cookies, and
+ * cannot touch the parent's DOM. This policy is the second fence:
+ *
+ * - `connect-src 'none'`: a visualization has nothing to fetch, and a script that cannot
+ *   make a request cannot phone anything home — whatever it computed stays on the page.
+ * - scripts from `VIZ_SCRIPT_HOSTS` only, so a library is loadable but an arbitrary host is not.
+ * - `frame-ancestors 'self'`: only this app may frame it; everything else keeps `'none'`.
+ */
+export function vizFrameCsp(): string {
+  return serialize({
+    'default-src': ["'none'"],
+    'script-src': ["'unsafe-inline'", "'unsafe-eval'", ...VIZ_SCRIPT_HOSTS],
+    'style-src': ["'unsafe-inline'", ...VIZ_SCRIPT_HOSTS],
+    'img-src': ['data:', 'blob:'],
+    'font-src': ['data:', ...VIZ_SCRIPT_HOSTS],
+    'connect-src': ["'none'"],
+    'worker-src': ['blob:'],
+    'object-src': ["'none'"],
+    'base-uri': ["'none'"],
+    'form-action': ["'none'"],
+    'frame-ancestors': ["'self'"],
+  });
+}

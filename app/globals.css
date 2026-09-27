@@ -27,6 +27,11 @@
   --warn-soft: rgba(251, 191, 36, 0.13);
   --danger: #fb7185;
   --danger-soft: rgba(251, 113, 133, 0.13);
+  /* Curve hues for an interactive plot. Chosen from the palette already in use so a plot
+     belongs to the app; told apart by dash pattern as well as colour (WCAG 1.4.1). */
+  --la-plot-1: #6ee7b7;
+  --la-plot-2: #a78bfa;
+  --la-plot-3: #fbbf24;
   --radius: 14px;
   --radius-sm: 10px;
   /* Friendly depth: cards lift off the page instead of being drawn onto it. */
@@ -803,6 +808,151 @@ button[aria-disabled='true'] {
 .la-steps-label {
   font-weight: 600;
   margin-bottom: 4px;
+}
+
+/* A derivation is printed whole rather than walked through, so it needs the shape of a
+   list: the numbers carry the order that the Next button used to. */
+.la-steps-list {
+  margin: 8px 0 0;
+  padding-left: 22px;
+}
+
+.la-steps-list > li + li {
+  margin-top: 12px;
+}
+
+.la-steps-list .la-steps-label {
+  margin: 0;
+}
+
+/* A plot is both something to look at and something to do, so it takes the figure's inset
+   surface and the violet "your turn" edge. */
+.la-plot {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent-2);
+  border-radius: var(--radius);
+  background: var(--panel-sunk);
+}
+
+.la-plot-title {
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.la-plot-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-size: 12px;
+}
+
+.la-plot-grid line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.la-plot-grid text {
+  fill: var(--muted);
+}
+
+.la-plot-axes line {
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.la-plot-zero {
+  stroke-dasharray: 3 3;
+}
+
+.la-plot-axis-label {
+  fill: var(--muted);
+}
+
+.la-plot-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  color: var(--muted);
+}
+
+.la-plot-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.la-plot-swatch {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+}
+
+.la-plot-controls {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.la-plot-control {
+  display: grid;
+  gap: 4px;
+}
+
+.la-plot-control-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+/* The readout is the one place the slider says what it is set to, so it is monospaced and
+   does not shift the label around as the digits change. */
+.la-plot-control output {
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.la-plot-control input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent-2);
+  height: 24px;
+}
+
+.la-plot-reset {
+  margin: 12px 0 0;
+}
+
+.la-plot figcaption {
+  margin-top: 10px;
+}
+
+/* A lesson-written visualization shares the plot's panel: it is the same kind of thing — a
+   picture the learner works — and should read as such, whoever drew it. */
+.la-interactive {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent-2);
+  border-radius: var(--radius);
+  background: var(--panel-sunk);
+}
+
+.la-interactive-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color-scheme: dark;
+}
+
+.la-interactive figcaption {
+  margin-top: 10px;
 }
 
 /* WHY: model prose is markdown, and until it had rules of its own every rendered block

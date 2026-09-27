@@ -19,6 +19,8 @@ test('the final project states the question behind the subject before anything i
 
   await expect(page.getByTestId('capstone-start')).toBeVisible();
   await expect(page.getByRole('heading', { name: /Compress a real file/ })).toBeVisible();
+  // The tutor set the project: the brief is on the page before anything is handed in.
+  await expect(page.getByTestId('capstone-spec')).toContainText('12 KB log excerpt');
 });
 
 test('handing work in returns comments, and it can be handed in again', async ({

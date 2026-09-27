@@ -26,6 +26,32 @@ I have only tested this tool on STEM topics (specifically math and organic chemi
 
 I use Opus for everything here. It's not enough tokens that it's worth risking quality for cost (at least for me).
 
+## What it looks like
+
+**Your subjects.** Each one shows how far through it you are and what is open to you next.
+
+![The home page: five subjects, each with a progress bar and a count of lessons done, open and still ahead](docs/screenshots/home.png)
+
+**The shape of a subject.** The researched curriculum is a map, not a list. Each line means one
+lesson grew out of another, and any lesson whose groundwork you have covered is open, in whatever
+order you like.
+
+![The curriculum map for Electrical Engineering: the driving question at the top, four open lessons, and the rest of the plan branching beneath them](docs/screenshots/curriculum.png)
+
+**A lesson.** Prose alternates with diagrams and questions that check you actually followed it. The
+math is typeset properly.
+
+![Part of a lesson on the Gaussian: a short explanation, a labelled bell-curve diagram, and a multiple-choice check on why a density can exceed 1](docs/screenshots/lesson.png)
+
+Derivations are worked one step at a time, each step saying why it follows from the one before.
+
+![A worked derivation in six steps, taking the log of the Gaussian density until mean squared error falls out](docs/screenshots/lesson-derivation.png)
+
+**Spaced review.** Finished lessons come back when they are due. You can mark whether you
+remembered one, or talk it through again.
+
+![The review page: 21 lessons due, each with buttons for remembered, forgotten, or talk it through](docs/screenshots/review.png)
+
 ## Setup and run
 
 ### Easiest: Download and run with the start script

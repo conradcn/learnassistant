@@ -4,15 +4,9 @@ import { useMemo, useState, type ReactNode } from 'react';
 import type { LessonBlock } from '@/shapes';
 import { renderMarkdown, sanitizeSvg } from '@/ui/sanitize';
 import { MathText } from '@/ui/components/MathText';
-import {
-  blockKey,
-  checkFeedback,
-  correctOption,
-  stepAt,
-  stepProgress,
-  type CheckBlock,
-  type StepsBlock,
-} from '@/ui/blocks';
+import { blockKey, checkFeedback, correctOption, type CheckBlock, type StepsBlock } from '@/ui/blocks';
+import { PlotFigure } from '@/ui/components/PlotBlock';
+import { InteractiveFigure } from '@/ui/components/InteractiveBlock';
 
 /** Model markdown, escaped and re-marked-up by C10's own renderer — never trusted as markup. */
 function Prose({ markdown }: { markdown: string }): ReactNode {
@@ -131,40 +125,28 @@ function Reveal({ block }: { block: Extract<LessonBlock, { kind: 'reveal' }> }):
 }
 
 /**
- * A derivation the learner advances a line at a time. WHY not simply print all of it: the
- * same eight lines printed at once are skimmed as a block; printed one at a time each line
- * costs a deliberate click, which is the whole difference between reading and following.
+ * A derivation, printed whole.
+ *
+ * WHY it is no longer walked one step at a time: clicking "Next step" eight times is not
+ * thinking, it is tabbing — the learner does the same reading either way, with a button
+ * press taxed onto each line and no way to look back at line two while reading line six.
+ * Where a lesson genuinely needs the learner to commit before seeing more, that is what a
+ * "check" or a "reveal" is for, and both ask for an answer rather than a click. New lessons
+ * are not written with this kind at all (see the authoring contract); it renders because
+ * lessons already in the library contain it.
  */
 function Steps({ block }: { block: StepsBlock }): ReactNode {
-  const [index, setIndex] = useState(0);
-  const step = stepAt(block, index);
-  const last = block.steps.length - 1;
   return (
     <section className="la-steps" data-testid="block-steps">
       <MathText as="p" className="la-steps-title" text={block.title} testId="steps-title" />
-      <p className="la-muted" data-testid="steps-progress">
-        {stepProgress(block, index)}
-      </p>
-      <MathText as="p" className="la-steps-label" text={step.label} testId="steps-label" />
-      <Prose markdown={step.markdown} />
-      <p className="la-row">
-        <button
-          type="button"
-          data-testid="steps-back"
-          disabled={step.position === 0}
-          onClick={() => setIndex(step.position - 1)}
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          data-testid="steps-next"
-          disabled={step.position === last}
-          onClick={() => setIndex(step.position + 1)}
-        >
-          {step.position === last ? 'That is the last step' : 'Next step'}
-        </button>
-      </p>
+      <ol className="la-steps-list">
+        {block.steps.map((step, index) => (
+          <li key={`${index}-${step.label}`}>
+            <MathText as="p" className="la-steps-label" text={step.label} />
+            <Prose markdown={step.markdown} />
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }
@@ -175,6 +157,8 @@ function Block({ block }: { block: LessonBlock }): ReactNode {
   if (block.kind === 'table') return <TableFigure block={block} />;
   if (block.kind === 'check') return <Check block={block} />;
   if (block.kind === 'reveal') return <Reveal block={block} />;
+  if (block.kind === 'plot') return <PlotFigure block={block} />;
+  if (block.kind === 'interactive') return <InteractiveFigure block={block} />;
   return <Steps block={block} />;
 }
 

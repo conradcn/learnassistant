@@ -63,6 +63,12 @@ export function moduleIdOfTarget(target: EvalTarget, store: Store): ModuleId {
   return target.moduleId;
 }
 
+/** A subject whose final project exists in the plan but has no brief written for it yet. */
+export function capstoneBriefMissing(store: Store, topicId: TopicId): boolean {
+  const node = capstoneNode(store.modules.graph(topicId));
+  return node !== null && node.content === null;
+}
+
 export function defaultScript(title: string): EvalScript {
   return {
     objectives: [`Show you can use the ideas in "${title}", not just recite them`],
@@ -225,9 +231,20 @@ export class EvalEngine {
   open(kind: EvalKind, target: EvalTarget): EvalSession {
     const parsedTarget = evalTargetSchema.parse(target);
     const id = sessionIdFor(kind, parsedTarget);
+    // WHY (F13): the tutor proposes the project. With no brief written, the review opened on
+    // the project's bare title and asked for "what you built" — the learner was left to
+    // invent the whole assignment. There is nothing to hand in against until the brief exists.
+    if (parsedTarget.kind === 'capstone' && capstoneBriefMissing(this.store, parsedTarget.topicId)) {
+      throw err('conflict', {
+        detail: 'capstone review requested before the brief was written',
+        userMessage: 'Your tutor has not set this project yet. It is written with the next lessons for this subject.',
+      });
+    }
     const existing = this.store.evals.get(id);
     if (existing !== null) {
       const live = hydrateSession(existing);
+      const rebriefed = this.rebrief(live, parsedTarget);
+      if (rebriefed !== null) return rebriefed;
       // WHY: closing an untouched sibling must not make that gate unreachable. The id is
       // derived from the target, so reopening lands on the same row, and a row closed
       // with nothing in it has nothing to preserve — reviving it is what makes "closed
@@ -263,8 +280,27 @@ export class EvalEngine {
   // runs. `open` cannot serve that: it creates the session when there is none, and the
   // page has to know the difference so it only opens the conversation it means to.
   peek(kind: EvalKind, target: EvalTarget): EvalSession | null {
-    const existing = this.store.evals.get(sessionIdFor(kind, evalTargetSchema.parse(target)));
-    return existing === null ? null : hydrateSession(existing);
+    const parsedTarget = evalTargetSchema.parse(target);
+    const existing = this.store.evals.get(sessionIdFor(kind, parsedTarget));
+    if (existing === null) return null;
+    const live = hydrateSession(existing);
+    return this.rebrief(live, parsedTarget) ?? live;
+  }
+
+  // WHY: a project review opened before its brief was (re)written still quotes the old one —
+  // or only the project's title — in its opening turn. While nothing has been handed in,
+  // that opening IS the brief, so it is brought up to date rather than left contradicting
+  // the page. Once the learner has handed something in, the conversation is theirs and
+  // stays as it was.
+  private rebrief(live: EvalSession, target: EvalTarget): EvalSession | null {
+    if (target.kind !== 'capstone' || live.turns.some((turn) => turn.role === 'learner')) return null;
+    if (capstoneBriefMissing(this.store, target.topicId)) return null;
+    const opening = this.openingTurn(target);
+    if (live.turns[0]?.text === opening.text) return null;
+    const openedAt = nowIso();
+    this.store.evals.reset(live.id, opening, openedAt);
+    log({ level: 'info', event: 'eval-session-rebriefed', component: 'C6', sessionId: live.id, kind: live.kind });
+    return hydrateSession({ ...live, turns: [opening], consecutiveFailures: 0, status: 'open', openedAt });
   }
 
   // WHY: the only way a conversation is ever discarded. Everything else resumes it, so
@@ -479,7 +515,12 @@ export class EvalEngine {
       );
     }
     const target = evalTargetSchema.parse({ kind: 'capstone', topicId });
-    const session = this.open('capstone', target);
+    let session: EvalSession;
+    try {
+      session = this.open('capstone', target);
+    } catch (error) {
+      return Promise.reject(error);
+    }
     return this.send(session.id, { text: artifact, selfAssessment: null });
   }
 

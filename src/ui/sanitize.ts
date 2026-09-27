@@ -324,7 +324,9 @@ function sanitizeAttributes(raw: string): string {
   let match = attrRe.exec(raw);
   while (match !== null) {
     const name = match[1].toLowerCase();
-    const value = match[3] ?? match[4] ?? '';
+    // Decode BEFORE the checks, never after: `&#106;avascript:` has to be read as the
+    // scheme it becomes, not as the harmless-looking text it is written as.
+    const value = decodeEntities(match[3] ?? match[4] ?? '');
     if (!name.startsWith('on') && SVG_ATTRS.has(name) && attrValueAllowed(value)) {
       out.push(`${ATTR_CANONICAL.get(name) ?? name}="${escapeHtml(value)}"`);
     }
@@ -355,7 +357,10 @@ function sanitizeSvgUncached(svg: string): string {
   let match = tagRe.exec(source);
   while (match !== null) {
     const text = source.slice(cursor, match.index);
-    if (skipDepth === 0 && text.length > 0) out.push(escapeHtml(text));
+    // Decode then escape, as prose does: a label written `A &rarr; B` must reach the
+    // learner as an arrow, not as the literal characters `&rarr;`. Escaping straight
+    // away would freeze the artifact into the drawing.
+    if (skipDepth === 0 && text.length > 0) out.push(escapeHtml(decodeEntities(text)));
     cursor = match.index + match[0].length;
 
     const rawName = match[1].toLowerCase();
@@ -391,7 +396,7 @@ function sanitizeSvgUncached(svg: string): string {
   }
   if (skipDepth === 0) {
     const tail = source.slice(cursor);
-    if (tail.length > 0) out.push(escapeHtml(tail));
+    if (tail.length > 0) out.push(escapeHtml(decodeEntities(tail)));
   }
   while (open.length > 0) out.push(`</${open.pop() ?? 'g'}>`);
   return out.join('');

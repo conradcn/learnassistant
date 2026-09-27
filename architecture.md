@@ -120,7 +120,7 @@ F-IDs and is built sequentially before every other component.
   - example: `{ "kind": "video", "url": "https://www.youtube.com/watch?v=ErfnhcEV1O8", "title": "Information entropy", "channel": "3Blue1Brown", "durationSec": 612, "why": "Visual derivation at exactly this level." }`
 - `Visualization` = `{ kind: "svg", svg: string, caption: string } | { kind: "table", headers: string[], rows: string[][], caption: string } | { kind: "none" }`
   - example: `{ "kind": "none" }`
-- `LessonBlock` = `{ kind: "prose", markdown: string } | { kind: "figure", svg: string, caption: string } | { kind: "table", headers: string[], rows: string[][], caption: string } | { kind: "check", question: string, options: string[], answerIndex: number, whyRight: string, whyWrong: string } | { kind: "reveal", prompt: string, answer: string } | { kind: "steps", title: string, steps: { label: string, markdown: string }[] }` — one piece of the interleaved lesson body (F3); `answerIndex` must index `options` or the block is refused, and every interactive kind is ungraded and unrecorded
+- `LessonBlock` = `{ kind: "prose", markdown: string } | { kind: "figure", svg: string, caption: string } | { kind: "table", headers: string[], rows: string[][], caption: string } | { kind: "check", question: string, options: string[], answerIndex: number, whyRight: string, whyWrong: string } | { kind: "reveal", prompt: string, answer: string } | { kind: "steps", title: string, steps: { label: string, markdown: string }[] } | { kind: "interactive", title: string, caption: string, html: string (<= 60,000 chars), height?: number (80-1600) } | { kind: "plot", title: string, caption: string, xLabel: string, yLabel: string, xMin: number, xMax: number, yMin?: number, yMax?: number, params: { name, label, min, max, step, value }[] (1-4), curves: { label, expression }[] (1-3) }` — one piece of the interleaved lesson body (F3); `answerIndex` must index `options`, a plot's every `expression` must compile against `x` and the plot's own slider names (`@/core/expr`), its sliders must be uniquely named, must not shadow `x` and must start inside their own range, and each axis must run forwards — any of these failing refuses the block rather than repairing it. Every interactive kind is ungraded and unrecorded. `interactive` is the one model-written string in the app that is executed rather than escaped or sanitized — accepted by decision, contained by the frame (C10) rather than by inspecting the code, so the schema checks only its size and caption. `steps` is legacy: it still parses and renders (printed whole, not walked) because stored lessons contain it, but the authoring contract no longer offers it
   - example: `{ "kind": "check", "question": "How many yes/no questions pin down one of $8$ equally likely outcomes?", "options": ["$8$", "$3$", "$4$"], "answerIndex": 1, "whyRight": "Each question halves the field, and $\log_2 8 = 3$.", "whyWrong": "Counting the outcomes rather than the halvings gives $8$." }`
 - `WarmUp` = `{ prompt: string, expectedStruggle: string }`
 - `LessonQuestion` = `{ question: string, answer: string }` — one ungraded question asked while reading a lesson, and the answer given (F3); stored as a marked reflection note rather than a table of its own
@@ -269,6 +269,8 @@ credential lives in the CLI's configuration and is never read by this app at all
 - `src/core/scrub.ts`
 - `src/core/errors.ts`
 - `src/core/release.ts`
+- `src/core/csp.ts` also owns `vizFrameCsp()` — the one policy that runs arbitrary inline script, for the `/viz-frame` host of `interactive` blocks: `default-src 'none'`, `connect-src 'none'`, scripts inline or from the named CDNs in `VIZ_SCRIPT_HOSTS` only, `frame-ancestors 'self'`. `middleware.ts` and `next.config.mjs` leave that one path alone, since a second CSP header would be enforced alongside it and X-Frame-Options: DENY would stop the lesson framing it.
+- `src/core/expr.ts` (the arithmetic language a `plot` block's curves are written in — tokenizer, parser and compiler to a closure, with no path to the JS engine; used by `shapes.ts` to refuse a formula at authoring time and by C10 to draw it)
 
 **Tests (planned):**
 - `tests/core/shapes.test.ts` (shape-conformance: every example value in the registry validates against its guard)
@@ -1360,11 +1362,31 @@ components in the Next.js App Router, styled with Tailwind, dark-mode first, com
   degrades to the offending source in the error colour rather than failing the page.
 - Render the **lesson body** (`ModuleContent.blocks`) as an interleaved sequence rather than one
   slab of prose: `prose` through the same sanitized-Markdown path as the explanation, `figure`
-  through the SVG sanitizer, `table` as a real table, and the three interactive kinds — `check`
+  through the SVG sanitizer, `table` as a real table, and the interactive kinds — `check`
   (one question, immediate feedback, re-pickable because nothing is recorded), `reveal` (answer
-  withheld until asked for), `steps` (one step at a time, clamped at both ends) — as local
-  component state only. None of it is persisted, none of it is graded, and none of it gates the
-  rest of the lesson; measurement belongs to C6/F4.
+  withheld until asked for), `plot` (a graph redrawn from its formulas on every slider move), `interactive` (lesson-written
+  code in a sandboxed frame, below) —
+  as local component state only. None of it is persisted, none of it is graded, and none of it
+  gates the rest of the lesson; measurement belongs to C6/F4. `steps` no longer paginates: a
+  derivation is printed whole, because clicking "Next step" eight times is tabbing, not thinking,
+  and it hides line two while line six is being read.
+- Run an **`interactive`** block's HTML and JavaScript as written, in an iframe at `/viz-frame`
+  with `sandbox="allow-scripts"` and never `allow-same-origin`: the document runs in an opaque
+  origin, so it cannot read the session credential in the page's `<meta>`, the app's storage or
+  cookies, or the page's DOM. The frame is a real URL rather than `srcdoc` because a `srcdoc`
+  document inherits the page's CSP, which runs no inline script; the host document asks its
+  parent for the code by postMessage once it is listening and writes it into itself behind a
+  prelude that supplies the app's palette as CSS variables and reports the content's height.
+  The parent reads exactly two message types from the frame (ready, height) and clamps the
+  height; everything else it posts is ignored.
+- Draw a **`plot`** from its own formulas rather than from stored geometry: `@/ui/plot` samples
+  each curve across the x range at the current slider values, breaks it where the value stops
+  being finite or leaves the box (so an asymptote is a hole, not a vertical line through zero),
+  autoscales the vertical axis over the middle 96% of the samples unless the author pinned both
+  ends, and lays the axes out on round ticks. Curves are told apart by dash pattern as well as
+  colour (WCAG 1.4.1) and the whole plot carries its caption as its `aria-label`. The formulas
+  are compiled by C0's arithmetic language, never by the JavaScript engine — a model-written
+  formula is untrusted input in exactly the way a model-written SVG is.
 - Omit the lesson body entirely when `blocks` is absent or empty, as for the visualization below —
   lessons authored before the field existed still render, and `blocks` is optional *without a
   default* precisely so C4's content digest over already-stored lessons still matches.
@@ -1470,7 +1492,9 @@ score-like.
 - `app/review/page.tsx`, `app/practice/page.tsx`, `app/synthesis/page.tsx`, `app/journal/page.tsx`
 - `app/settings/page.tsx`, `app/recover/page.tsx`
 - `src/ui/store.ts`, `src/ui/api-client.ts`, `src/ui/optimistic.ts`, `src/ui/source-material.ts`
-- `src/ui/components/GraphView.tsx`, `LessonView.tsx`, `WarmUpGate.tsx`, `ExplanationView.tsx`, `LessonBlocks.tsx`, `VisualizationView.tsx`, `ChatPanel.tsx`, `AskPanel.tsx`, `PredictionPrompt.tsx`, `CalibrationCard.tsx`, `ReflectionEditor.tsx`, `ReviewQueue.tsx`, `PracticeRunner.tsx`, `CapstoneWorkspace.tsx`, `AppCliBanner.tsx`, `LoadStateBoundary.tsx`, `DegradedCard.tsx`, `SourceMaterial.tsx`, `QueueView.tsx` (what the app is writing in the background, on the settings page: polls every 5s rather than subscribing, because the SSE stream is per-topic and this view spans every topic and its history; a failed poll keeps the list it has and says so)
+- `src/ui/components/GraphView.tsx`, `LessonView.tsx`, `WarmUpGate.tsx`, `ExplanationView.tsx`, `LessonBlocks.tsx`, `PlotBlock.tsx`, `VisualizationView.tsx`, `ChatPanel.tsx`, `AskPanel.tsx`, `PredictionPrompt.tsx`, `CalibrationCard.tsx`, `ReflectionEditor.tsx`, `ReviewQueue.tsx`, `PracticeRunner.tsx`, `CapstoneWorkspace.tsx`, `AppCliBanner.tsx`, `LoadStateBoundary.tsx`, `DegradedCard.tsx`, `SourceMaterial.tsx`, `QueueView.tsx` (what the app is writing in the background, on the settings page: polls every 5s rather than subscribing, because the SSE stream is per-topic and this view spans every topic and its history; a failed poll keeps the list it has and says so)
+- `src/ui/viz-frame.ts` (the `/viz-frame` host document, its sandbox attribute and the message protocol across the frame's edge), `app/viz-frame/route.ts`, `src/ui/components/InteractiveBlock.tsx`
+- `src/ui/plot.ts` (sampling, autoscaling and tick layout for an interactive plot, kept out of the component so where the curve goes can be tested without rendering)
 - `src/ui/sanitize.ts`, `src/ui/blocks.ts`, `src/ui/queue-copy.ts` (every string that view renders, kept out of the component so the jargon test can read them directly)
 
 **Tests (planned):**
@@ -1479,7 +1503,12 @@ score-like.
 - `tests/ui/advisory.test.tsx` (unit, covers F3 AC: exactly one acknowledgment, never a hard block)
 - `tests/ui/graph-choice.test.tsx` (unit, covers F3 AC: with ≥2 available modules both are presented; no implicit "next")
 - `tests/ui/visualization.test.tsx` (unit, covers F3 path: `kind: "none"` omits the section, no blank placeholder)
-- `tests/ui/lesson-blocks.test.tsx` (unit, covers F3: blocks render in authored order; a check gives no feedback before a pick and stays re-pickable; a reveal withholds its answer; a stepper shows one step and clamps at both ends; a figure is stripped of anything executable; a lesson with no blocks renders as before and keeps its digest)
+- `tests/ui/lesson-blocks.test.tsx` (unit, covers F3: blocks render in authored order; a check gives no feedback before a pick and stays re-pickable; a reveal withholds its answer; a derivation is printed whole with nothing left to click through; a plot draws a curve per formula, moves it when a slider moves, resets to where it started and describes itself in its `aria-label`; a figure is stripped of anything executable; a lesson with no blocks renders as before and keeps its digest)
+- `tests/ui/viz-frame.test.ts` (unit, covers F3: the sandbox is `allow-scripts` and nothing else; `/viz-frame` is served with its own policy and no X-Frame-Options; the frame takes code only from its parent; the parent reads only ready/height from it and clamps the height; the schema caps the code's size and requires a caption)
+- `tests/api/csp.test.ts` also pins `vizFrameCsp()` — script allowed, no network, no form posts, framed only by this app, no host beyond the named CDNs — and that neither the API nor the document policy gained anything from it
+- `e2e/f03-lesson.spec.ts` covers the same in a real browser: the seeded interactive block's script runs and responds to a click, and its own attempts to read the parent page, read storage and fetch the API are each blocked
+- `tests/ui/plot.test.ts` (unit, covers F3: a curve follows its sliders; an asymptote breaks the line instead of being drawn through, and does not set the scale; an uncompilable curve is dropped without taking the plot with it; a pinned axis stays pinned; ticks land on round numbers; a slider snaps to its own step and stays in range; the schema refuses an undeclared slider name, a slider outside its range, one shadowing `x`, and a backwards axis)
+- `tests/core/expr.test.ts` (unit, covers F3: the formula language does the arithmetic a curve needs, reads `-x^2` as the negated square, resolves sliders from its scope, returns NaN rather than throwing at draw time — and has no path to the JS engine: no property access, no assignment, no call it did not define, with a length and a nesting cap)
 - `tests/ui/load-state.test.tsx` (H3: every list renders error and empty as distinct components; a failed fetch never shows the empty state)
 - `tests/ui/no-grades.test.tsx` (F5/F10 AC: no numeric or letter grade in any rendered progress string)
 - `tests/ui/jargon.test.tsx` (design-notes AC: no user-facing string contains codebase jargon from a project-specific list)

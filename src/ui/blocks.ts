@@ -23,17 +23,6 @@ export function correctOption(block: CheckBlock): string {
   return block.options[block.answerIndex];
 }
 
-/** Clamped so a stale index from a re-rendered block can never index off the end. */
-export function stepAt(block: StepsBlock, index: number): { position: number; label: string; markdown: string } {
-  const position = Math.min(Math.max(index, 0), block.steps.length - 1);
-  const step = block.steps[position];
-  return { position, label: step.label, markdown: step.markdown };
-}
-
-export function stepProgress(block: StepsBlock, index: number): string {
-  return `Step ${stepAt(block, index).position + 1} of ${block.steps.length}`;
-}
-
 /**
  * A key that survives re-authoring: the ordinal alone collides across renders of different
  * content, and the content alone collides when a lesson legitimately repeats a block.

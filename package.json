@@ -24,7 +24,7 @@
     "@types/katex": "0.16.7",
     "better-sqlite3": "12.4.1",
     "katex": "0.16.22",
-    "next": "15.5.23",
+    "next": "15.5.25",
     "pdfjs-dist": "5.4.149",
     "react": "19.1.1",
     "react-dom": "19.1.1",
@@ -43,7 +43,7 @@
     "@vitejs/plugin-react": "5.0.4",
     "@vitest/coverage-v8": "3.2.7",
     "eslint": "9.37.0",
-    "eslint-config-next": "15.5.23",
+    "eslint-config-next": "15.5.25",
     "jsdom": "27.0.0",
     "typescript": "5.9.2",
     "vitest": "3.2.7"

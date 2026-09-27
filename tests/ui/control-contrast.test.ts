@@ -10,7 +10,9 @@ import { join } from 'node:path'
  * still invisible where it meets the button it is drawing.
  */
 
-const css = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8')
+// WHY the CRLF fold: a Windows checkout with core.autocrlf rewrites this file's line endings,
+// and every lookup below is written against a bare newline.
+const css = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8').replace(/\r\n/g, '\n')
 
 const vars: Record<string, string> = (() => {
   const start = css.indexOf(':root')

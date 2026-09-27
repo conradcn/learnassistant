@@ -9,7 +9,9 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: '/:path*',
+        // Every path but /viz-frame, which must be frameable by this app (it says so in its
+        // own frame-ancestors) and so cannot carry X-Frame-Options: DENY.
+        source: '/:path((?!viz-frame$).*)',
         headers: [
           { key: 'Referrer-Policy', value: 'no-referrer' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },

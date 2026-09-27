@@ -52,7 +52,7 @@ export function repairTargets(graph: ModuleGraph, finding: Finding): ModuleId[] 
 
 /**
  * The interleaving contract, as the writing prompt states it: never more than two "prose"
- * blocks in a row without a figure, table, check, reveal or steps between them.
+ * blocks in a row without a figure, table, plot, interactive, check or reveal between them.
  */
 export const MAX_PROSE_RUN = 2;
 
@@ -75,7 +75,7 @@ export function interleavingFinding(node: ModuleNode): Finding | null {
       message:
         `Lesson ${node.ordinal} ("${node.title}") has no body: "blocks" is missing or empty, so the ` +
         'learner is given the opening explanation and nothing else. Write the lesson body as ' +
-        'interleaved blocks — prose broken up by figures, tables, checks, reveals or steps.',
+        'interleaved blocks — prose broken up by figures, tables, plots, interactives, checks or reveals.',
       affectedModules: [node.id],
     };
   }
@@ -85,7 +85,7 @@ export function interleavingFinding(node: ModuleNode): Finding | null {
       message:
         `Lesson ${node.ordinal} ("${node.title}") runs ${run} "prose" blocks in a row with nothing to ` +
         `look at or do between them. The contract allows at most ${MAX_PROSE_RUN}: break that run up ` +
-        'with a figure, table, check, reveal or steps where the idea has just been made.',
+        'with a figure, table, plot, interactive, check or reveal where the idea has just been made.',
       affectedModules: [node.id],
     };
   }

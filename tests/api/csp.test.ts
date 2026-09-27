@@ -1,6 +1,6 @@
 // FRACTAL: covers F1 | type unit
 import { describe, expect, it } from 'vitest';
-import { apiCsp, documentCsp, newNonce } from '@/core/csp';
+import { apiCsp, documentCsp, newNonce, VIZ_SCRIPT_HOSTS, vizFrameCsp } from '@/core/csp';
 import { SECURITY_HEADERS } from '@/api/respond';
 
 /**
@@ -56,6 +56,29 @@ describe('content security policy', () => {
     expect(dev).toContain("'unsafe-eval'");
     expect(dev).toContain('ws:');
     expect(documentCsp('n', false)).not.toContain('ws:');
+  });
+
+  // WHY pinned as tightly as the API policy: this is the one policy in the app that allows
+  // arbitrary script, by decision (F3 interactive blocks). What it may NOT do is the contract
+  // — reach the network, be framed by anyone else, or load script from anywhere but the
+  // named CDNs.
+  it('lets an interactive frame run script and nothing more', () => {
+    const csp = vizFrameCsp();
+    expect(csp).toContain(`script-src 'unsafe-inline' 'unsafe-eval' ${VIZ_SCRIPT_HOSTS.join(' ')};`);
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("connect-src 'none'");
+    expect(csp).toContain("form-action 'none'");
+    expect(csp).toContain("frame-ancestors 'self'");
+    expect(csp).not.toMatch(/(^|[\s;])https:(\s|;|$)/);
+  });
+
+  it('widens nothing in the policies the rest of the app runs under', () => {
+    expect(apiCsp()).not.toContain('unsafe-inline');
+    expect(documentCsp('n', false)).not.toContain("script-src 'self' 'unsafe-inline'");
+    for (const host of VIZ_SCRIPT_HOSTS) {
+      expect(apiCsp()).not.toContain(host);
+      expect(documentCsp('n', false)).not.toContain(host);
+    }
   });
 
   it('mints a fresh, non-trivial nonce each time', () => {

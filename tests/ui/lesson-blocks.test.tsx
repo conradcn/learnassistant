@@ -34,6 +34,18 @@ const STEPS: LessonBlock = {
   ],
 };
 
+const PLOT: LessonBlock = {
+  kind: 'plot',
+  title: 'Growth rate',
+  caption: 'Turn $k$ up and the curve gets steeper long before it gets taller.',
+  xLabel: 't',
+  yLabel: 'N',
+  xMin: 0,
+  xMax: 5,
+  params: [{ name: 'k', label: 'Growth rate $k$', min: 0, max: 3, step: 0.5, value: 1 }],
+  curves: [{ label: '$e^{kt}$', expression: 'exp(k * x)' }],
+};
+
 function lessonWith(blocks: LessonBlock[] | undefined): ModuleNode {
   return { ...exampleModuleNode, content: { ...exampleModuleContent, blocks } };
 }
@@ -126,23 +138,108 @@ describe('a reveal', () => {
   });
 });
 
-describe('a stepper', () => {
-  it('shows one step at a time and says where the learner is', () => {
+describe('a derivation', () => {
+  it('is printed whole, so line two is still there while line six is read', () => {
     render(<LessonBlocks blocks={[STEPS]} />);
-    expect(screen.getByTestId('steps-progress').textContent).toBe('Step 1 of 3');
-    expect(document.body.textContent ?? '').not.toContain('That average is the entropy.');
-    fireEvent.click(screen.getByTestId('steps-next'));
-    fireEvent.click(screen.getByTestId('steps-next'));
-    expect(screen.getByTestId('steps-progress').textContent).toBe('Step 3 of 3');
-    expect(screen.getByTestId('block-steps').textContent).toContain('That average is the entropy.');
+    const body = screen.getByTestId('block-steps').textContent ?? '';
+    expect(body).toContain('Write');
+    expect(body).toContain('Weight each surprise');
+    expect(body).toContain('That average is the entropy.');
   });
 
-  it('cannot be walked off either end', () => {
+  it('has nothing left to click through', () => {
     render(<LessonBlocks blocks={[STEPS]} />);
-    expect((screen.getByTestId('steps-back') as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByTestId('steps-next'));
-    fireEvent.click(screen.getByTestId('steps-next'));
-    expect((screen.getByTestId('steps-next') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTestId('steps-next')).toBeNull();
+    expect(screen.queryByTestId('steps-back')).toBeNull();
+  });
+});
+
+describe('an interactive plot', () => {
+  it('draws a curve for each formula and labels the sliders', () => {
+    render(<LessonBlocks blocks={[PLOT]} />);
+    expect(screen.getByTestId('plot-curve-0').querySelectorAll('path').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('plot-value-k').textContent).toContain('k = 1');
+  });
+
+  it('moves the curve when the learner moves the slider', () => {
+    render(<LessonBlocks blocks={[PLOT]} />);
+    const before = screen.getByTestId('plot-curve-0').querySelector('path')?.getAttribute('d');
+    fireEvent.change(screen.getByTestId('plot-slider-k'), { target: { value: '3' } });
+    expect(screen.getByTestId('plot-value-k').textContent).toContain('k = 3');
+    expect(screen.getByTestId('plot-curve-0').querySelector('path')?.getAttribute('d')).not.toBe(before);
+  });
+
+  it('can be put back where it started, and says so by going quiet', () => {
+    render(<LessonBlocks blocks={[PLOT]} />);
+    expect((screen.getByTestId('plot-reset') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByTestId('plot-slider-k'), { target: { value: '3' } });
+    expect((screen.getByTestId('plot-reset') as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByTestId('plot-reset'));
+    expect(screen.getByTestId('plot-value-k').textContent).toContain('k = 1');
+  });
+
+  it('is readable without sight of it — the caption is the plot in words', () => {
+    render(<LessonBlocks blocks={[PLOT]} />);
+    const label = screen.getByTestId('plot-svg').getAttribute('aria-label') ?? '';
+    expect(label).toContain('Growth rate');
+    expect(label).toContain('steeper');
+  });
+
+  it('counts as something to do, not another wall of prose', () => {
+    expect(longestProseRun([{ kind: 'prose', markdown: 'one' }, PLOT, { kind: 'prose', markdown: 'two' }])).toBe(1);
+  });
+});
+
+describe('a lesson-written visualization', () => {
+  const INTERACTIVE: LessonBlock = {
+    kind: 'interactive',
+    title: 'Halving',
+    caption: 'Click until one is left.',
+    html: '<button id="b">Ask</button><script>b.onclick=()=>{}</script>',
+    height: 200,
+  };
+
+  function fromFrame(frame: HTMLIFrameElement, data: unknown): void {
+    fireEvent(window, new MessageEvent('message', { data, source: frame.contentWindow }));
+  }
+
+  it('runs in a sandboxed frame at the frame route, never inline in the page', () => {
+    render(<LessonBlocks blocks={[INTERACTIVE]} />);
+    const frame = screen.getByTestId('interactive-frame') as HTMLIFrameElement;
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts');
+    expect(frame.getAttribute('src')).toBe('/viz-frame');
+    expect(frame.hasAttribute('srcdoc')).toBe(false);
+    // The code is nowhere in the page's own DOM — it only ever exists inside the frame.
+    expect(screen.getByTestId('block-interactive').innerHTML).not.toContain('onclick');
+  });
+
+  it('hands its code over when the frame says it is listening, and to no one else', () => {
+    render(<LessonBlocks blocks={[INTERACTIVE]} />);
+    const frame = screen.getByTestId('interactive-frame') as HTMLIFrameElement;
+    const target = frame.contentWindow as Window;
+    const sent: unknown[] = [];
+    target.postMessage = ((message: unknown) => sent.push(message)) as Window['postMessage'];
+
+    // A ready message from some other window is ignored.
+    fireEvent(window, new MessageEvent('message', { data: { type: 'la-viz-ready' }, source: window }));
+    expect(sent).toEqual([]);
+
+    fromFrame(frame, { type: 'la-viz-ready' });
+    expect(sent).toEqual([{ type: 'la-viz-render', html: INTERACTIVE.html }]);
+  });
+
+  it('grows to the height its content reports, within bounds', () => {
+    render(<LessonBlocks blocks={[INTERACTIVE]} />);
+    const frame = screen.getByTestId('interactive-frame') as HTMLIFrameElement;
+    expect(frame.style.height).toBe('200px');
+    fromFrame(frame, { type: 'la-viz-height', height: 420 });
+    expect(frame.style.height).toBe('420px');
+    fromFrame(frame, { type: 'la-viz-height', height: 99999 });
+    expect(frame.style.height).toBe('1600px');
+  });
+
+  it('counts as something to do', () => {
+    expect(longestProseRun([{ kind: 'prose', markdown: 'one' }, INTERACTIVE, { kind: 'prose', markdown: 'two' }])).toBe(1);
   });
 });
 

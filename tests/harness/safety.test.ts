@@ -79,7 +79,10 @@ describe('the test harness stays inside its own sandbox', () => {
     const tmp = path.resolve(os.tmpdir());
     const rel = path.relative(tmp, dataRoot);
     expect(rel.startsWith('..'), dataRoot).toBe(false);
-    expect(path.relative(ROOT, dataRoot).startsWith('..')).toBe(true);
+    // WHY isAbsolute: on a Windows runner the checkout (D:) and the temp dir (C:) are on
+    // different drives, and path.relative between drives returns an absolute path.
+    const fromProject = path.relative(ROOT, dataRoot);
+    expect(fromProject.startsWith('..') || path.isAbsolute(fromProject), dataRoot).toBe(true);
   });
 
   it('leaves no durable residue inside the project directory', () => {

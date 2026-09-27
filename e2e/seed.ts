@@ -119,6 +119,42 @@ function content(title: string, goal: string): ModuleContent {
           { label: 'Then average', markdown: 'Do that for every outcome and weigh them.' },
         ],
       },
+      // A plot the learner drives (F3). Seeded alongside the legacy stepper so the suite
+      // covers both the kind lessons are written with now and the kind already stored.
+      {
+        kind: 'plot',
+        title: `How ${title.toLowerCase()} responds to its parameter`,
+        caption: 'Drag the rate: the curve steepens long before it gets taller.',
+        xLabel: 't',
+        yLabel: 'N',
+        xMin: 0,
+        xMax: 5,
+        params: [{ name: 'k', label: 'Rate', min: 0, max: 3, step: 0.5, value: 1 }],
+        curves: [{ label: 'exp(k t)', expression: 'exp(k * x)' }],
+      },
+      // A lesson-written visualization (F3). Besides doing something when clicked, it tries
+      // every way out of its sandbox and writes down what happened, so the E2E can check
+      // from the outside that model-written script ran AND stayed contained.
+      {
+        kind: 'interactive',
+        title: `Halving ${title.toLowerCase()}`,
+        caption: 'Ask until one is left.',
+        height: 160,
+        html: [
+          '<p id="left">16 left</p><button id="ask">Ask a question</button>',
+          '<p id="parent-read"></p><p id="storage"></p><p id="network"></p>',
+          '<script>',
+          'let n = 16;',
+          'ask.onclick = () => { n = Math.max(1, n / 2); left.textContent = n + " left"; };',
+          'try { parent.document.title; document.getElementById("parent-read").textContent = "parent: READ"; }',
+          'catch (e) { document.getElementById("parent-read").textContent = "parent: blocked"; }',
+          'try { localStorage.length; storage.textContent = "storage: READ"; }',
+          'catch (e) { storage.textContent = "storage: blocked"; }',
+          'fetch("/api/health").then(() => { network.textContent = "network: REACHED"; },',
+          '  () => { network.textContent = "network: blocked"; });',
+          '</script>',
+        ].join('\n'),
+      },
     ],
     // The pack of flat facts the authoring session proposed (F14): offered with the
     // lesson, added to the learner's cards only if they press the button.
@@ -160,7 +196,19 @@ function node(
     testOutEligible: ordinal === 2,
     estimatedMinutes: 15 + ordinal,
     state,
-    content: kind === 'capstone' ? null : content(title, `Use ${title.toLowerCase()} deliberately`),
+    // WHY the capstone carries a written brief: the tutor proposes the project (F13), and a
+    // project with no brief cannot be opened for review at all.
+    content:
+      kind === 'capstone'
+        ? {
+            ...content(title, `Use ${title.toLowerCase()} deliberately`),
+            explanation: {
+              kind: 'text',
+              markdown:
+                'Compress the 12 KB log excerpt below with a coder you build yourself, report the ratio you reach, and justify every design choice against the lessons.',
+            },
+          }
+        : content(title, `Use ${title.toLowerCase()} deliberately`),
   };
 }
 

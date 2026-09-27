@@ -21,9 +21,11 @@ function clamp(text: string): string {
   return flat.length <= MAX_SCOPE_CHARS ? flat : `${flat.slice(0, MAX_SCOPE_CHARS)}…`;
 }
 
-// WHY every block kind contributes: a figure's caption, a check's question and a steps
-// block's labels are all things the learner was shown, and each is a fair thing to ask
-// about. Only the raw SVG is dropped — it is markup, not teaching.
+// WHY every block kind contributes: a figure's caption, a check's question and a plot's
+// curves are all things the learner was shown, and each is a fair thing to ask about. Only
+// the raw SVG is dropped — it is markup, not teaching. A plot contributes its formulas as
+// well as its caption, because "what happened to the curve when you turned the knob up" is
+// a question about something the learner actually had in front of them.
 function blockLines(content: ModuleContent): string[] {
   const out: string[] = [];
   for (const block of content.blocks ?? []) {
@@ -35,7 +37,15 @@ function blockLines(content: ModuleContent): string[] {
     } else if (block.kind === 'check') {
       out.push(`Check: ${block.question} — answer: ${block.options[block.answerIndex] ?? ''}. ${block.whyRight}`);
     } else if (block.kind === 'reveal') out.push(`Worked: ${block.prompt} — ${block.answer}`);
-    else {
+    else if (block.kind === 'plot') {
+      const sliders = block.params.map((p) => `${p.name} (${p.label})`).join(', ');
+      const curves = block.curves.map((c) => `${c.label} = ${c.expression}`).join('; ');
+      out.push(`Plot: ${block.title} — ${block.caption} Curves: ${curves}. Sliders: ${sliders}.`);
+    } else if (block.kind === 'interactive') {
+      // The code is dropped for the same reason an SVG is: it is how the thing was drawn,
+      // not what the learner was taught. The caption says what they were meant to see.
+      out.push(`Interactive: ${block.title} — ${block.caption}`);
+    } else {
       out.push(`Steps — ${block.title}`);
       for (const step of block.steps) out.push(`Step ${step.label}: ${step.markdown}`);
     }

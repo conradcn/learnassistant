@@ -64,7 +64,7 @@ export function CapstoneBrief({ topic, node }: CapstoneBriefProps): ReactNode {
       </p>
       <p data-testid="capstone-purpose">
         {topic.purpose.length === 0
-          ? 'Build something that shows you can use this for real.'
+          ? 'The brief above is the project: it answers the question behind this subject.'
           : `Why you took this on: ${topic.purpose}`}
       </p>
       <p className="la-muted">

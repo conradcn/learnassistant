@@ -3,6 +3,7 @@
  * Reading a lesson: try first, then read, then choose what to do next.
  */
 import { test, expect } from './fixtures';
+import { pastWarmUp } from './helpers';
 import { SUBJECT_A } from './seed';
 
 // WHY a lesson per test: a first go is now kept, so a lesson another test has already
@@ -65,8 +66,9 @@ test('the lesson body breaks up the text with things to look at and things to do
   clickTo,
 }) => {
   await enter('/');
+  // WHY pastWarmUp: f03-display-math opens this same lesson first on the shared seed.
   await openLesson(page, clickTo, 'Reading a probability table');
-  await page.getByTestId('warm-up-skip').click();
+  await pastWarmUp(page);
 
   const body = page.getByTestId('lesson-blocks');
   await expect(body).toBeVisible();
@@ -84,11 +86,32 @@ test('the lesson body breaks up the text with things to look at and things to do
   await body.getByTestId('reveal-show').click();
   await expect(body.getByTestId('reveal-answer')).toBeVisible();
 
-  // A stepper walks one step at a time and stops at the end.
-  await expect(body.getByTestId('steps-progress')).toHaveText('Step 1 of 2');
-  await body.getByTestId('steps-next').click();
-  await expect(body.getByTestId('steps-progress')).toHaveText('Step 2 of 2');
-  await expect(body.getByTestId('steps-next')).toBeDisabled();
+  // A derivation is printed whole — there is nothing to click through.
+  await expect(body.getByTestId('block-steps')).toContainText('Then average');
+  await expect(body.getByTestId('steps-next')).toHaveCount(0);
+
+  // A plot redraws from its own formulas as the learner drags the slider, and can be put
+  // back where it started.
+  const plot = body.getByTestId('block-plot');
+  await expect(plot.getByTestId('plot-value-k')).toContainText('k = 1');
+  const before = await plot.getByTestId('plot-curve-0').locator('path').first().getAttribute('d');
+  await plot.getByTestId('plot-slider-k').fill('3');
+  await expect(plot.getByTestId('plot-value-k')).toContainText('k = 3');
+  expect(await plot.getByTestId('plot-curve-0').locator('path').first().getAttribute('d')).not.toBe(before);
+  await plot.getByTestId('plot-reset').click();
+  await expect(plot.getByTestId('plot-value-k')).toContainText('k = 1');
+
+  // A lesson-written visualization runs its own script — and only inside its sandbox: it
+  // cannot read the page around it, the app's storage, or the network.
+  const viz = body.getByTestId('block-interactive');
+  await expect(viz.getByTestId('interactive-frame')).toHaveAttribute('sandbox', 'allow-scripts');
+  const inside = viz.frameLocator('[data-testid="interactive-frame"]');
+  await expect(inside.locator('#left')).toHaveText('16 left');
+  await inside.getByRole('button', { name: 'Ask a question' }).click();
+  await expect(inside.locator('#left')).toHaveText('8 left');
+  await expect(inside.locator('#parent-read')).toHaveText('parent: blocked');
+  await expect(inside.locator('#storage')).toHaveText('storage: blocked');
+  await expect(inside.locator('#network')).toHaveText('network: blocked');
 
   // None of it is graded, so none of it gates what comes next.
   await expect(page.getByTestId('start-evaluation')).toBeVisible();

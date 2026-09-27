@@ -1,5 +1,6 @@
 // FRACTAL: implements (none) | component C0
 import { z } from 'zod';
+import { expressionError, MAX_EXPRESSION_CHARS } from '@/core/expr';
 
 export const TOPIC_ID_RE = /^t_[A-Za-z0-9]{16}$/;
 export const MODULE_ID_RE = /^m_[A-Za-z0-9]{16}$/;
@@ -369,6 +370,149 @@ export type NewCard = z.infer<typeof newCardSchema>;
 export const exampleNewCard: NewCard = { front: 'Amine', back: '$-\mathrm{NH_2}$' };
 
 /**
+ * A plot the learner drives. WHY this and not another picture: a figure shows one case of a
+ * relationship, and the thing worth learning is usually how the relationship MOVES — what
+ * happens to the Gaussian as $\sigma$ grows, where the logistic saturates, which term stops
+ * mattering as the exponent climbs. Ten static figures cannot say that; one curve with a
+ * slider under it says it in the first drag.
+ *
+ * The curves are formulas in `x` and in the sliders' own names, compiled by C0's arithmetic
+ * language (`@/core/expr`) rather than by the JavaScript engine — a lesson's formula is
+ * model-written, stored and then re-read in the browser, so it is untrusted exactly as a
+ * lesson's SVG is.
+ */
+export const MAX_PLOT_PARAMS = 4;
+export const MAX_PLOT_CURVES = 3;
+export const PLOT_VARIABLE = 'x';
+export const PLOT_PARAM_NAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,15}$/;
+
+const plotParamSchema = z
+  .object({
+    /** The name the curves use for this slider. Must not shadow the horizontal variable. */
+    name: z.string().regex(PLOT_PARAM_NAME_RE),
+    label: z.string().min(1),
+    min: z.number().finite(),
+    max: z.number().finite(),
+    step: z.number().finite().positive(),
+    /** Where the slider sits when the learner first meets the plot. */
+    value: z.number().finite(),
+  })
+  .strict();
+export type PlotParam = z.infer<typeof plotParamSchema>;
+
+const plotCurveSchema = z
+  .object({
+    label: z.string().min(1),
+    /** A formula in `x` and the slider names, e.g. `a * sin(b * x)`. */
+    expression: z.string().min(1).max(MAX_EXPRESSION_CHARS),
+  })
+  .strict();
+export type PlotCurve = z.infer<typeof plotCurveSchema>;
+
+const plotBlockSchema = z
+  .object({
+    kind: z.literal('plot'),
+    title: z.string().min(1),
+    /** What to watch for while dragging — the point of the plot, in one or two lines. */
+    caption: z.string().min(1),
+    xLabel: z.string(),
+    yLabel: z.string(),
+    xMin: z.number().finite(),
+    xMax: z.number().finite(),
+    /** Both omitted means the vertical axis follows the curves as the sliders move. */
+    yMin: z.number().finite().optional(),
+    yMax: z.number().finite().optional(),
+    params: z.array(plotParamSchema).min(1).max(MAX_PLOT_PARAMS),
+    curves: z.array(plotCurveSchema).min(1).max(MAX_PLOT_CURVES),
+  })
+  .strict();
+export type PlotBlock = z.infer<typeof plotBlockSchema>;
+
+/**
+ * Everything about a plot that cannot be said in the shape alone. WHY each is a refusal
+ * rather than a repair: a slider whose range excludes its own starting value, or a curve
+ * naming a slider nobody declared, is a plot whose author meant something we cannot guess —
+ * and guessing is inventing the teaching, the same reason a misaimed `answerIndex` is
+ * refused rather than clamped.
+ */
+function checkPlot(block: PlotBlock, ctx: z.RefinementCtx): void {
+  if (block.xMin >= block.xMax) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['xMax'], message: 'xMax must be greater than xMin' });
+  }
+  if (block.yMin !== undefined && block.yMax !== undefined && block.yMin >= block.yMax) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['yMax'], message: 'yMax must be greater than yMin' });
+  }
+  const seen = new Set<string>();
+  for (const [index, param] of block.params.entries()) {
+    const path = ['params', index] as const;
+    if (param.name === PLOT_VARIABLE) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...path, 'name'],
+        message: `"${PLOT_VARIABLE}" is the horizontal axis and cannot also be a slider`,
+      });
+    }
+    if (seen.has(param.name)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...path, 'name'],
+        message: `two sliders are both called "${param.name}"`,
+      });
+    }
+    seen.add(param.name);
+    if (param.min >= param.max) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [...path, 'max'], message: 'max must be greater than min' });
+    }
+    if (param.value < param.min || param.value > param.max) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [...path, 'value'],
+        message: 'value must sit between min and max',
+      });
+    }
+  }
+  const names = [PLOT_VARIABLE, ...block.params.map((p) => p.name)];
+  for (const [index, curve] of block.curves.entries()) {
+    const error = expressionError(curve.expression, names);
+    if (error !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['curves', index, 'expression'],
+        message: `${error} (available names: ${names.join(', ')})`,
+      });
+    }
+  }
+}
+
+/**
+ * A visualization the lesson writes as code: HTML, CSS and JavaScript, run as written in a
+ * sandboxed frame (C10, `@/ui/viz-frame`).
+ *
+ * WHY a block that executes model-written script, in an app whose every other model string is
+ * escaped or sanitized: a simulation, a draggable construction, an animation of an algorithm
+ * cannot be written down as data, and `plot` is the ceiling of what a declarative block can
+ * express. This was a deliberate decision to accept arbitrary script from the authoring model
+ * — contained by an opaque-origin sandbox and a no-network policy, not by inspecting the code.
+ * The schema checks only size: a string of HTML has no shape to check, and anything short of
+ * running it is a guess about what it does.
+ */
+export const MAX_INTERACTIVE_HTML_CHARS = 60_000;
+
+const interactiveBlockSchema = z
+  .object({
+    kind: z.literal('interactive'),
+    title: z.string().min(1),
+    /** What to do with it and what to notice — also the frame's accessible name. */
+    caption: z.string().min(1),
+    /** A body fragment or a whole document; either is written into the frame as-is. */
+    html: z.string().min(1).max(MAX_INTERACTIVE_HTML_CHARS),
+    /** The frame's height until the content reports its own, in CSS pixels. */
+    height: z.number().int().min(80).max(1600).optional(),
+  })
+  .strict();
+export type InteractiveBlock = z.infer<typeof interactiveBlockSchema>;
+
+/**
  * One piece of the lesson body. WHY (F3): a module used to be one slab of markdown with at
  * most a single picture appended underneath, so a twenty-minute lesson read as a wall of
  * text the learner scrolled rather than worked through. A lesson is instead a SEQUENCE of
@@ -415,6 +559,8 @@ const lessonBlockVariantSchema = z.discriminatedUnion('kind', [
       steps: z.array(z.object({ label: z.string(), markdown: z.string() }).strict()).min(2),
     })
     .strict(),
+  plotBlockSchema,
+  interactiveBlockSchema,
 ]);
 
 /**
@@ -424,6 +570,7 @@ const lessonBlockVariantSchema = z.discriminatedUnion('kind', [
  * and choosing one on the model's behalf would be inventing the teaching.
  */
 export const lessonBlockSchema = lessonBlockVariantSchema.superRefine((block, ctx) => {
+  if (block.kind === 'plot') checkPlot(block, ctx);
   if (block.kind === 'check' && block.answerIndex >= block.options.length) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -440,6 +587,31 @@ export const exampleLessonBlock: LessonBlock = {
   answerIndex: 1,
   whyRight: 'Each question halves the field, and $\log_2 8 = 3$.',
   whyWrong: 'Counting the outcomes rather than the halvings gives $8$.',
+};
+
+export const examplePlotBlock: PlotBlock = {
+  kind: 'plot',
+  title: 'Entropy of a biased coin',
+  caption: 'Drag the bias. The peak is at a fair coin, and it falls away fast in both directions.',
+  xLabel: 'p (probability of heads)',
+  yLabel: 'bits',
+  xMin: 0.001,
+  xMax: 0.999,
+  params: [{ name: 'n', label: 'Flips averaged over', min: 1, max: 10, step: 1, value: 1 }],
+  curves: [
+    { label: 'H(p) per flip', expression: '0 - (x * log2(x) + (1 - x) * log2(1 - x))' },
+    { label: 'Total over n flips', expression: 'n * (0 - (x * log2(x) + (1 - x) * log2(1 - x)))' },
+  ],
+};
+
+export const exampleInteractiveBlock: InteractiveBlock = {
+  kind: 'interactive',
+  title: 'Twenty questions, halved',
+  caption: 'Click to ask one yes/no question. Count how many it takes to pin down 1 of 16.',
+  html:
+    '<p id="out">16 left</p><button id="ask">Ask a question</button>' +
+    '<script>let n=16;ask.onclick=()=>{n=Math.max(1,n/2);out.textContent=n+" left";};</script>',
+  height: 120,
 };
 
 export const warmUpSchema = z.object({
