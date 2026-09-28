@@ -3,8 +3,12 @@ import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
+// WHY fileURLToPath and not URL.pathname: the pathname stays percent-encoded, so a checkout
+// under "C:\Users\Jane Doe" (%20) or an 8.3 short name like RUNNER~1 (%7E) became a
+// directory that does not exist, and the build's spawn died as "spawn cmd.exe ENOENT".
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const port = process.env.PORT ?? '31544';
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 

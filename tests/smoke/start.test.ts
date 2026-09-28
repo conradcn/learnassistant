@@ -42,7 +42,7 @@ function launch(cwd: string, port: number) {
   return { child, output: () => out };
 }
 
-async function waitForServer(port: number, timeoutMs: number) {
+async function waitForServer(port: number, timeoutMs: number, output?: () => string) {
   const deadline = Date.now() + timeoutMs;
   let last = 'never responded';
   while (Date.now() < deadline) {
@@ -55,7 +55,14 @@ async function waitForServer(port: number, timeoutMs: number) {
     }
     await new Promise((r) => setTimeout(r, 500));
   }
-  throw new Error(`start script never brought the server up on ${port}: ${last}`);
+  // WHY the output: "fetch failed" alone does not say whether the install, the build or
+  // the server died, and on CI the child's output is otherwise lost with it.
+  const tail = output?.().slice(-4000);
+  throw new Error(
+    `start script never brought the server up on ${port}: ${last}${tail ? `
+--- start script output (tail) ---
+${tail}` : ''}`,
+  );
 }
 
 async function portIsFree(port: number) {
@@ -104,7 +111,7 @@ describe('start script contract', () => {
         );
       }
       const { child, output } = launch(process.cwd(), PORT);
-      const res = await waitForServer(PORT, 360_000);
+      const res = await waitForServer(PORT, 360_000, output);
       expect(res.status).toBeLessThan(500);
       expect(output()).toContain(MARKER);
       // cached-deps path must not re-run the installer
@@ -126,7 +133,7 @@ describe('start script contract', () => {
 
       const freshPort = PORT + 1;
       const { output } = launch(tmp, freshPort);
-      const res = await waitForServer(freshPort, 840_000);
+      const res = await waitForServer(freshPort, 840_000, output);
       expect(res.status).toBeLessThan(500);
       expect(output()).toContain('Installing dependencies');
       expect(output()).toContain(MARKER);

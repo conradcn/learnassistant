@@ -23,11 +23,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 // WHY the .ts specifier: Node strips the types at load, so the script and the vitest
 // suites share one source for the port instead of each re-deriving it.
 import { START_PORT } from '../tests/fixtures/app-constants.ts';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const PORT = Number(process.env.LA_SMOKE_PORT ?? START_PORT);
 const DATA_DIR = process.env.LA_SMOKE_DATA_DIR ?? './.docker-smoke-data';

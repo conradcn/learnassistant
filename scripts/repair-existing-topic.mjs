@@ -9,9 +9,10 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname).replace(/^\/(\w:)/, '$1'), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TOPIC = 't_wtdukAXY981t37pa';
 const MODULES = path.join(ROOT, 'data', 'topics', TOPIC, 'modules');
 const db = new Database(path.join(ROOT, 'data', 'learn.db'));
