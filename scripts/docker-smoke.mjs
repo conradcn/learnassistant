@@ -49,6 +49,15 @@ const env = {
   // Left at the default the container would print its "no claude CLI in here" notice,
   // which is correct but is noise in a run about whether the server comes up.
   LA_PROVIDER: 'ollama',
+  // WHY the host's own ids: the compose file runs as 1000:1000, and the fresh data
+  // directory made below belongs to whoever runs this. A GitHub runner is uid 1001, so the
+  // entrypoint refuses the bind mount and the container restarts until the boot wait runs
+  // out. This is the LA_UID/LA_GID fix the entrypoint's own message tells a learner to make.
+  // Windows and macOS hosts have no getuid (or Docker Desktop ignores ownership), so the
+  // compose default stands there.
+  ...(typeof process.getuid === 'function' && process.platform !== 'darwin'
+    ? { LA_UID: process.env.LA_UID ?? String(process.getuid()), LA_GID: process.env.LA_GID ?? String(process.getgid()) }
+    : {}),
 };
 
 let step = 0;
@@ -291,6 +300,17 @@ try {
 } catch (e) {
   console.error(`\n[docker-smoke] FAILED: ${e instanceof Error ? e.message : String(e)}`);
   process.exitCode = 1;
+  // WHY here: teardown removes the container, so CI's own "Container logs" step, which
+  // runs after this script exits, has nothing left to print.
+  if (!KEEP) {
+    say('container logs:');
+    spawnSync('docker', ['compose', '-p', PROJECT, 'logs', '--no-color', '--tail', '200'], {
+      cwd: root,
+      env,
+      stdio: ['ignore', 'inherit', 'inherit'],
+      timeout: 60_000,
+    });
+  }
 } finally {
   teardown();
 }
